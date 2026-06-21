@@ -16,7 +16,7 @@ param(
     [securestring] $ClientSecret
 )
 
-Import-Module (Join-Path $PSScriptRoot '..' 'FabricDataAgentObservability.psd1') -Force
+Import-Module (Join-Path $PSScriptRoot '..' 'PSFabricDataAgentObservability.psd1') -Force
 
 $connectArgs = @{
     AuthMethod   = $AuthMethod

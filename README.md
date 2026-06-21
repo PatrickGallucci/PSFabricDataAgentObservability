@@ -1,9 +1,12 @@
-# FabricDataAgentObservability
+# PSFabricDataAgentObservability
 
 [![CI](https://github.com/PatrickGallucci/PSFabricDataAgentObservability/actions/workflows/ci.yml/badge.svg)](https://github.com/PatrickGallucci/PSFabricDataAgentObservability/actions/workflows/ci.yml)
 [![Docs](https://github.com/PatrickGallucci/PSFabricDataAgentObservability/actions/workflows/docs.yml/badge.svg)](https://patrickgallucci.github.io/PSFabricDataAgentObservability/)
-[![PowerShell Gallery](https://img.shields.io/powershellgallery/v/FabricDataAgentObservability.svg)](https://www.powershellgallery.com/packages/FabricDataAgentObservability)
-[![Downloads](https://img.shields.io/powershellgallery/dt/FabricDataAgentObservability.svg)](https://www.powershellgallery.com/packages/FabricDataAgentObservability)
+[![Publish](https://github.com/PatrickGallucci/PSFabricDataAgentObservability/actions/workflows/publish.yml/badge.svg)](https://github.com/PatrickGallucci/PSFabricDataAgentObservability/actions/workflows/publish.yml)
+[![PowerShell Gallery](https://img.shields.io/powershellgallery/v/PSFabricDataAgentObservability?logo=powershell&logoColor=white&label=PSGallery)](https://www.powershellgallery.com/packages/PSFabricDataAgentObservability)
+[![Downloads](https://img.shields.io/powershellgallery/dt/PSFabricDataAgentObservability?color=blue&label=downloads)](https://www.powershellgallery.com/packages/PSFabricDataAgentObservability)
+[![Platforms](https://img.shields.io/powershellgallery/p/PSFabricDataAgentObservability?color=informational)](https://www.powershellgallery.com/packages/PSFabricDataAgentObservability)
+[![PowerShell 7.2+](https://img.shields.io/badge/PowerShell-7.2%2B-5391FE?logo=powershell&logoColor=white)](https://learn.microsoft.com/powershell/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Production-grade observability for **Fabric Data Agent (FDA)** NL-to-DAX interactions, backed by a Fabric Eventhouse (KQL) database.
@@ -23,13 +26,13 @@ It captures the full interaction trail — **question → reasoning → groundin
 ## Install
 
 ```powershell
-Install-Module FabricDataAgentObservability -Scope CurrentUser
+Install-Module PSFabricDataAgentObservability -Scope CurrentUser
 ```
 
 Or import from source:
 
 ```powershell
-Import-Module ./FabricDataAgentObservability.psd1
+Import-Module ./PSFabricDataAgentObservability.psd1
 ```
 
 ## Quick start
@@ -71,7 +74,7 @@ See the [cmdlet index](docs/README.md#cmdlet-index) for details.
 ```powershell
 Invoke-Pester -Path ./tests
 Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./PSScriptAnalyzerSettings.psd1
-Test-ModuleManifest ./FabricDataAgentObservability.psd1
+Test-ModuleManifest ./PSFabricDataAgentObservability.psd1
 ```
 
 ## Documentation set

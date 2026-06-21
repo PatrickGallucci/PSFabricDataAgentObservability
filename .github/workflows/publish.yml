@@ -26,7 +26,7 @@ jobs:
       - name: Validate before publish
         shell: pwsh
         run: |
-          Test-ModuleManifest ./FabricDataAgentObservability.psd1 | Out-Null
+          Test-ModuleManifest ./PSFabricDataAgentObservability.psd1 | Out-Null
           $errors = @(Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./PSScriptAnalyzerSettings.psd1 |
                       Where-Object Severity -eq 'Error')
           if ($errors.Count) { throw "ScriptAnalyzer errors: $($errors.Count)" }
@@ -38,7 +38,7 @@ jobs:
       - name: Verify tag matches module version
         shell: pwsh
         run: |
-          $ver = (Test-ModuleManifest ./FabricDataAgentObservability.psd1).Version.ToString()
+          $ver = (Test-ModuleManifest ./PSFabricDataAgentObservability.psd1).Version.ToString()
           $tag = "${{ github.ref_name }}".TrimStart('v')
           if ($tag -and $tag -ne $ver) {
             throw "Tag ($tag) does not match module version ($ver)."
@@ -54,7 +54,7 @@ jobs:
             Write-Warning 'PSGALLERY_API_KEY secret is not set; skipping publish.'
             exit 0
           }
-          $name = 'FabricDataAgentObservability'
+          $name = 'PSFabricDataAgentObservability'
           $ver  = (Test-ModuleManifest "./$name.psd1").Version.ToString()
           $existing = Find-Module -Name $name -RequiredVersion $ver -ErrorAction SilentlyContinue
           if ($existing) {

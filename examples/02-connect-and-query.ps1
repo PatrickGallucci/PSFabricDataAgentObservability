@@ -11,7 +11,7 @@ param(
     [string] $Question = 'What was total revenue by region last quarter?'
 )
 
-Import-Module (Join-Path $PSScriptRoot '..' 'FabricDataAgentObservability.psd1') -Force
+Import-Module (Join-Path $PSScriptRoot '..' 'PSFabricDataAgentObservability.psd1') -Force
 
 Connect-FDAObservability -AuthMethod UserDelegated -TenantId $TenantId `
     -WorkspaceId $WorkspaceId -EventhouseId $EventhouseId

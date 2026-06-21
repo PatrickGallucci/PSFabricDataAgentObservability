@@ -9,7 +9,7 @@ param(
     [Parameter(Mandatory)] [string] $EventhouseId
 )
 
-Import-Module (Join-Path $PSScriptRoot '..' 'FabricDataAgentObservability.psd1') -Force
+Import-Module (Join-Path $PSScriptRoot '..' 'PSFabricDataAgentObservability.psd1') -Force
 Connect-FDAObservability -AuthMethod UserDelegated -TenantId $TenantId `
     -WorkspaceId $WorkspaceId -EventhouseId $EventhouseId
 

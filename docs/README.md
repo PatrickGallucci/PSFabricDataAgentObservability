@@ -1,4 +1,4 @@
-# FabricDataAgentObservability
+# PSFabricDataAgentObservability
 
 Production-grade observability for Fabric Data Agent (FDA) NL-to-DAX interactions, backed by a Fabric Eventhouse (KQL) database.
 
@@ -27,7 +27,7 @@ Captures the full interaction trail — **question → reasoning → grounding �
 ## Quick start
 
 ```powershell
-Import-Module ./FabricDataAgentObservability.psd1
+Import-Module ./PSFabricDataAgentObservability.psd1
 
 # 1. Connect — pick the auth method that fits your runner.
 Connect-FDAObservability -AuthMethod UserDelegated `

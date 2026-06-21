@@ -20,7 +20,7 @@ The proxy is the only place to get full fidelity. Workspace Monitoring + Purview
 caller (app / notebook / scheduled job)
    │
    ▼
-PowerShell module FabricDataAgentObservability
+PowerShell module PSFabricDataAgentObservability
    │   Invoke-FDAQuery   ← proxy: wrap, time, parse, redact, persist
    │   Write-FDALog      ← manual structured event
    │   Sync-...          ← Purview / M365 audit pull

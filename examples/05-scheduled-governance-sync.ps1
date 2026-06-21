@@ -14,7 +14,7 @@ param(
     [int] $LookbackHours = 24
 )
 
-Import-Module (Join-Path $PSScriptRoot '..' 'FabricDataAgentObservability.psd1') -Force
+Import-Module (Join-Path $PSScriptRoot '..' 'PSFabricDataAgentObservability.psd1') -Force
 Connect-FDAObservability -AuthMethod ServicePrincipal -TenantId $TenantId `
     -ClientId $ClientId -ClientSecret $ClientSecret `
     -WorkspaceId $WorkspaceId -EventhouseId $EventhouseId

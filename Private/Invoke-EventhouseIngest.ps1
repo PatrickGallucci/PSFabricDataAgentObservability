@@ -43,7 +43,7 @@ function Invoke-EventhouseIngest {
             $headers = @{
                 Authorization       = "Bearer $token"
                 'Content-Type'      = 'application/json; charset=utf-8'
-                'x-ms-client-version' = 'FabricDataAgentObservability/1.0.0'
+                'x-ms-client-version' = 'PSFabricDataAgentObservability/1.0.0'
                 'x-ms-client-request-id' = [guid]::NewGuid().ToString()
             }
             $resp = Invoke-RestMethod -Method Post -Uri $url -Headers $headers -Body $body -ErrorAction Stop

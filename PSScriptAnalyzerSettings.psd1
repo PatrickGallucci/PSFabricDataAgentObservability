@@ -1,5 +1,5 @@
 @{
-    # PSScriptAnalyzer configuration for FabricDataAgentObservability.
+    # PSScriptAnalyzer configuration for PSFabricDataAgentObservability.
     # Run:  Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./PSScriptAnalyzerSettings.psd1
     #
     # Severity gate: CI treats Error as blocking. Warnings are reviewed.

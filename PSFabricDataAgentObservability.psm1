@@ -1,6 +1,6 @@
 #Requires -Version 7.2
 <#
-    FabricDataAgentObservability.psm1
+    PSFabricDataAgentObservability.psm1
     Module loader and shared module-scope state.
 #>
 

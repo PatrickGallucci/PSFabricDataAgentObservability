@@ -1,7 +1,7 @@
 @{
-    RootModule           = 'FabricDataAgentObservability.psm1'
-    ModuleVersion        = '1.0.0'
-    GUID                 = 'a2c4e6b8-1d3f-4a5b-9c8d-7e6f5a4b3c2d'
+    RootModule           = 'PSFabricDataAgentObservability.psm1'
+    ModuleVersion        = '1.0.1'
+    GUID                 = 'c3fc66d1-7bc4-46c3-828f-85333a64697b'
     Author               = 'Patrick Gallucci'
     CompanyName          = 'Microsoft'
     Copyright            = '(c) Microsoft. All rights reserved.'
@@ -38,7 +38,7 @@
             Tags         = @('Fabric', 'PowerBI', 'DataAgent', 'NL2DAX', 'Observability', 'Logging', 'Eventhouse', 'KQL', 'Telemetry', 'Microsoft365')
             ProjectUri   = 'https://github.com/PatrickGallucci/PSFabricDataAgentObservability'
             LicenseUri   = 'https://github.com/PatrickGallucci/PSFabricDataAgentObservability/blob/main/LICENSE'
-            ReleaseNotes = 'Initial release. Proxy capture for FDA NL->DAX, Eventhouse sink, SP/MI/User auth, dynamic custom log levels, governance + cost/usage capture. See CHANGELOG.md for full notes.'
+            ReleaseNotes = 'Renamed module to PSFabricDataAgentObservability to align with the repository and published package name (new GUID). Functionally identical to 1.0.0: proxy capture for FDA NL->DAX, Eventhouse sink, SP/MI/User auth, dynamic custom log levels, governance + cost/usage capture. See CHANGELOG.md for full notes.'
         }
     }
 }

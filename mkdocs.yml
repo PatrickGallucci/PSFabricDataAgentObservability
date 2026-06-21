@@ -1,4 +1,4 @@
-site_name: FabricDataAgentObservability
+site_name: PSFabricDataAgentObservability
 site_description: Production-grade observability for Fabric Data Agent NL-to-DAX interactions, backed by a Fabric Eventhouse (KQL) database.
 site_author: Patrick Gallucci
 site_url: https://patrickgallucci.github.io/PSFabricDataAgentObservability/

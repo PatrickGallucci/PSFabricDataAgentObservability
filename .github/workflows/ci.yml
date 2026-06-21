@@ -31,7 +31,7 @@ jobs:
       - name: Test-ModuleManifest
         shell: pwsh
         run: |
-          $m = Test-ModuleManifest ./FabricDataAgentObservability.psd1
+          $m = Test-ModuleManifest ./PSFabricDataAgentObservability.psd1
           "Manifest OK: $($m.Name) v$($m.Version)"
 
       - name: PSScriptAnalyzer (fail on Error)

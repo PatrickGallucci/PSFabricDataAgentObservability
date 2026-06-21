@@ -42,7 +42,7 @@ function New-FDAEventhouse {
     param(
         [Parameter(Mandatory)] [string] $WorkspaceId,
         [Parameter(Mandatory)] [string] $DisplayName,
-        [string] $Description = 'Created by FabricDataAgentObservability for FDA capture logging.'
+        [string] $Description = 'Created by PSFabricDataAgentObservability for FDA capture logging.'
     )
 
     $url = 'https://api.fabric.microsoft.com/v1/workspaces/{0}/eventhouses' -f $WorkspaceId

@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-06-21
+
+### Changed
+
+- **Renamed the module from `FabricDataAgentObservability` to `PSFabricDataAgentObservability`** so the module, repository, and PowerShell Gallery package names all match. Renamed `FabricDataAgentObservability.psd1`/`.psm1` accordingly and assigned a new module GUID for the new package identity.
+- Updated the module manifest, manifest version, `x-ms-client-version` ingest header, install/import instructions, CI/publish workflows, MkDocs site name, README badges, and tests to the new name. No functional/behavioural changes from 1.0.0.
+
+> **Migration:** the previous `FabricDataAgentObservability` 1.0.0 package on the PowerShell Gallery is superseded by `PSFabricDataAgentObservability`. Switch with `Install-Module PSFabricDataAgentObservability`.
+
 ## [1.0.0] - 2026-06-21
 
 ### Added
