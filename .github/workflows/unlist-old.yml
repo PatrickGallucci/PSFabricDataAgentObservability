@@ -1,0 +1,47 @@
+name: Unlist Gallery package
+
+# Manual maintenance workflow. Unlists a superseded PowerShell Gallery package
+# version (hides it from search; existing installs and pinned installs still
+# work). Reversible from the Gallery package page. Uses the same PSGALLERY_API_KEY
+# secret as publish.yml so the key is never exposed outside CI.
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Module name to unlist
+        required: true
+        default: FabricDataAgentObservability
+      version:
+        description: Version to unlist
+        required: true
+        default: 1.0.0
+
+permissions:
+  contents: read
+
+jobs:
+  unlist:
+    name: Unlist ${{ inputs.package }} ${{ inputs.version }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Unlist from PowerShell Gallery
+        shell: pwsh
+        env:
+          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+        run: |
+          if (-not $env:PSGALLERY_API_KEY) { throw 'PSGALLERY_API_KEY secret is not set.' }
+          $pkg = '${{ inputs.package }}'
+          $ver = '${{ inputs.version }}'
+          $uri = "https://www.powershellgallery.com/api/v2/package/$pkg/$ver"
+          Write-Host "Unlisting $pkg $ver ..."
+          try {
+            Invoke-RestMethod -Method Delete -Uri $uri `
+              -Headers @{ 'X-NuGet-ApiKey' = $env:PSGALLERY_API_KEY } -ErrorAction Stop
+          } catch {
+            $code = $null
+            if ($_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode }
+            if ($code -eq 404) { Write-Host 'Already unlisted or not found (404); nothing to do.'; exit 0 }
+            throw
+          }
+          Write-Host "Unlist request accepted for $pkg $ver."
