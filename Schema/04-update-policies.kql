@@ -1,0 +1,170 @@
+// =====================================================================
+// 04-update-policies.kql
+// Raw JSON landing tables -> typed curated tables via update policies.
+// Functions named ExpandFDA*Raw produce the curated row shape.
+// =====================================================================
+
+// ---------- Expansion functions ---------------------------------------
+
+.create-or-alter function with (folder = 'UpdatePolicy', skipvalidation = 'true')
+ExpandFDAInteractionsRaw() {
+    FDAInteractionsRaw
+    | extend P = Payload
+    | extend
+        Timestamp           = todatetime(P.Timestamp),
+        InteractionId       = tostring(P.InteractionId),
+        CorrelationId       = tostring(P.CorrelationId),
+        SessionId           = tostring(P.SessionId),
+        TenantId            = tostring(P.TenantId),
+        UserPrincipalName   = tostring(P.UserPrincipalName),
+        ClientApp           = tostring(P.ClientApp),
+        AgentId             = tostring(P.AgentId),
+        AgentName           = tostring(P.AgentName),
+        AgentEndpoint       = tostring(P.AgentEndpoint),
+        Question            = tostring(P.Question),
+        QuestionRedacted    = tobool(P.QuestionRedacted),
+        Reasoning           = P.Reasoning,
+        Grounding           = P.Grounding,
+        GeneratedDAX        = tostring(P.GeneratedDAX),
+        Answer              = tostring(P.Answer),
+        AnswerRedacted      = tobool(P.AnswerRedacted),
+        Status              = tostring(P.Status),
+        ErrorMessage        = tostring(P.ErrorMessage),
+        LatencyMs           = tolong(P.LatencyMs),
+        PromptTokens        = tolong(P.PromptTokens),
+        CompletionTokens    = tolong(P.CompletionTokens),
+        TotalTokens         = tolong(P.TotalTokens),
+        LevelName           = tostring(P.LevelName),
+        LevelNumeric        = toint(P.LevelNumeric),
+        LevelCategory       = tostring(P.LevelCategory),
+        PartialCaptureNotes = P.PartialCaptureNotes,
+        Metadata            = P.Metadata,
+        ConsentClaim        = tostring(P.ConsentClaim),
+        SchemaVersion       = toint(P.SchemaVersion)
+    | project Timestamp, InteractionId, CorrelationId, SessionId, TenantId,
+              UserPrincipalName, ClientApp, AgentId, AgentName, AgentEndpoint,
+              Question, QuestionRedacted, Reasoning, Grounding, GeneratedDAX,
+              Answer, AnswerRedacted, Status, ErrorMessage, LatencyMs,
+              PromptTokens, CompletionTokens, TotalTokens, LevelName,
+              LevelNumeric, LevelCategory, PartialCaptureNotes, Metadata,
+              ConsentClaim, SchemaVersion
+}
+
+.create-or-alter function with (folder = 'UpdatePolicy', skipvalidation = 'true')
+ExpandFDAExecutionsRaw() {
+    FDAExecutionsRaw
+    | extend P = Payload
+    | extend
+        Timestamp         = todatetime(P.Timestamp),
+        ExecutionId       = tostring(P.ExecutionId),
+        InteractionId     = tostring(P.InteractionId),
+        CorrelationId     = tostring(P.CorrelationId),
+        TenantId          = tostring(P.TenantId),
+        UserPrincipalName = tostring(P.UserPrincipalName),
+        SemanticModelId   = tostring(P.SemanticModelId),
+        SemanticModelName = tostring(P.SemanticModelName),
+        ExecutedDAX       = tostring(P.ExecutedDAX),
+        DurationMs        = tolong(P.DurationMs),
+        RowsReturned      = tolong(P.RowsReturned),
+        BytesProcessed    = tolong(P.BytesProcessed),
+        CacheHit          = tobool(P.CacheHit),
+        Status            = tostring(P.Status),
+        ErrorMessage      = tostring(P.ErrorMessage),
+        Source            = tostring(P.Source),
+        LevelName         = tostring(P.LevelName),
+        LevelNumeric      = toint(P.LevelNumeric),
+        Metadata          = P.Metadata
+    | project Timestamp, ExecutionId, InteractionId, CorrelationId, TenantId,
+              UserPrincipalName, SemanticModelId, SemanticModelName, ExecutedDAX,
+              DurationMs, RowsReturned, BytesProcessed, CacheHit, Status,
+              ErrorMessage, Source, LevelName, LevelNumeric, Metadata
+}
+
+.create-or-alter function with (folder = 'UpdatePolicy', skipvalidation = 'true')
+ExpandFDAAuthEventsRaw() {
+    FDAAuthEventsRaw
+    | extend P = Payload
+    | extend
+        Timestamp         = todatetime(P.Timestamp),
+        EventId           = tostring(P.EventId),
+        CorrelationId     = tostring(P.CorrelationId),
+        TenantId          = tostring(P.TenantId),
+        UserPrincipalName = tostring(P.UserPrincipalName),
+        ClientApp         = tostring(P.ClientApp),
+        AuthMethod        = tostring(P.AuthMethod),
+        Outcome           = tostring(P.Outcome),
+        ConsentStatus     = tostring(P.ConsentStatus),
+        RLSContext        = P.RLSContext,
+        IPAddress         = tostring(P.IPAddress),
+        UserAgent         = tostring(P.UserAgent),
+        Source            = tostring(P.Source),
+        LevelName         = tostring(P.LevelName),
+        LevelNumeric      = toint(P.LevelNumeric),
+        Metadata          = P.Metadata
+    | project Timestamp, EventId, CorrelationId, TenantId, UserPrincipalName,
+              ClientApp, AuthMethod, Outcome, ConsentStatus, RLSContext,
+              IPAddress, UserAgent, Source, LevelName, LevelNumeric, Metadata
+}
+
+.create-or-alter function with (folder = 'UpdatePolicy', skipvalidation = 'true')
+ExpandFDACostMeteringRaw() {
+    FDACostMeteringRaw
+    | extend P = Payload
+    | extend
+        Timestamp              = todatetime(P.Timestamp),
+        MeterId                = tostring(P.MeterId),
+        InteractionId          = tostring(P.InteractionId),
+        UserPrincipalName      = tostring(P.UserPrincipalName),
+        TenantId               = tostring(P.TenantId),
+        ModelName              = tostring(P.ModelName),
+        PromptTokens           = tolong(P.PromptTokens),
+        CompletionTokens       = tolong(P.CompletionTokens),
+        TotalTokens            = tolong(P.TotalTokens),
+        EstimatedCapacityUnits = toreal(P.EstimatedCapacityUnits),
+        EstimatedCostUSD       = toreal(P.EstimatedCostUSD),
+        RateTableVersion       = tostring(P.RateTableVersion),
+        Metadata               = P.Metadata
+    | project Timestamp, MeterId, InteractionId, UserPrincipalName, TenantId,
+              ModelName, PromptTokens, CompletionTokens, TotalTokens,
+              EstimatedCapacityUnits, EstimatedCostUSD, RateTableVersion, Metadata
+}
+
+.create-or-alter function with (folder = 'UpdatePolicy', skipvalidation = 'true')
+ExpandFDALogEventsRaw() {
+    FDALogEventsRaw
+    | extend P = Payload
+    | extend
+        Timestamp         = todatetime(P.Timestamp),
+        EventId           = tostring(P.EventId),
+        CorrelationId     = tostring(P.CorrelationId),
+        SessionId         = tostring(P.SessionId),
+        TenantId          = tostring(P.TenantId),
+        UserPrincipalName = tostring(P.UserPrincipalName),
+        Source            = tostring(P.Source),
+        Category          = tostring(P.Category),
+        LevelName         = tostring(P.LevelName),
+        LevelNumeric      = toint(P.LevelNumeric),
+        Message           = tostring(P.Message),
+        Properties        = P.Properties,
+        Exception         = P.Exception
+    | project Timestamp, EventId, CorrelationId, SessionId, TenantId,
+              UserPrincipalName, Source, Category, LevelName, LevelNumeric,
+              Message, Properties, Exception
+}
+
+// ---------- Update policies (transactional, IsEnabled = true) ---------
+
+.alter table FDAInteractions policy update
+@'[ { "IsEnabled": true, "Source": "FDAInteractionsRaw",  "Query": "ExpandFDAInteractionsRaw()",  "IsTransactional": true, "PropagateIngestionProperties": true } ]'
+
+.alter table FDAExecutions policy update
+@'[ { "IsEnabled": true, "Source": "FDAExecutionsRaw",    "Query": "ExpandFDAExecutionsRaw()",    "IsTransactional": true, "PropagateIngestionProperties": true } ]'
+
+.alter table FDAAuthEvents policy update
+@'[ { "IsEnabled": true, "Source": "FDAAuthEventsRaw",    "Query": "ExpandFDAAuthEventsRaw()",    "IsTransactional": true, "PropagateIngestionProperties": true } ]'
+
+.alter table FDACostMetering policy update
+@'[ { "IsEnabled": true, "Source": "FDACostMeteringRaw",  "Query": "ExpandFDACostMeteringRaw()",  "IsTransactional": true, "PropagateIngestionProperties": true } ]'
+
+.alter table FDALogEvents policy update
+@'[ { "IsEnabled": true, "Source": "FDALogEventsRaw",     "Query": "ExpandFDALogEventsRaw()",     "IsTransactional": true, "PropagateIngestionProperties": true } ]'

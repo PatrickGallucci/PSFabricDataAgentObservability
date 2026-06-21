@@ -1,0 +1,67 @@
+// =====================================================================
+// 03-ingestion-mappings.kql
+// JSON ingestion mappings for the raw landing tables. The module's
+// streaming ingest call references these by name (?mappingName=...).
+// =====================================================================
+
+.create-or-alter table FDAInteractionsRaw ingestion json mapping 'FDAInteractionsRawMapping'
+'['
+'  { "column": "IngestTime", "path": "$.IngestTime", "datatype": "datetime" },'
+'  { "column": "Payload",    "path": "$",            "datatype": "dynamic"  }'
+']'
+
+.create-or-alter table FDAExecutionsRaw ingestion json mapping 'FDAExecutionsRawMapping'
+'['
+'  { "column": "IngestTime", "path": "$.IngestTime", "datatype": "datetime" },'
+'  { "column": "Payload",    "path": "$",            "datatype": "dynamic"  }'
+']'
+
+.create-or-alter table FDAAuthEventsRaw ingestion json mapping 'FDAAuthEventsRawMapping'
+'['
+'  { "column": "IngestTime", "path": "$.IngestTime", "datatype": "datetime" },'
+'  { "column": "Payload",    "path": "$",            "datatype": "dynamic"  }'
+']'
+
+.create-or-alter table FDACostMeteringRaw ingestion json mapping 'FDACostMeteringRawMapping'
+'['
+'  { "column": "IngestTime", "path": "$.IngestTime", "datatype": "datetime" },'
+'  { "column": "Payload",    "path": "$",            "datatype": "dynamic"  }'
+']'
+
+.create-or-alter table FDALogEventsRaw ingestion json mapping 'FDALogEventsRawMapping'
+'['
+'  { "column": "IngestTime", "path": "$.IngestTime", "datatype": "datetime" },'
+'  { "column": "Payload",    "path": "$",            "datatype": "dynamic"  }'
+']'
+
+// Direct ingestion mappings for operational tables (small volume, flat shape).
+
+.create-or-alter table FDALogLevels ingestion json mapping 'FDALogLevelsMapping'
+'['
+'  { "column": "Timestamp",    "path": "$.Timestamp",    "datatype": "datetime" },'
+'  { "column": "Name",         "path": "$.Name",         "datatype": "string"   },'
+'  { "column": "Numeric",      "path": "$.Numeric",      "datatype": "int"      },'
+'  { "column": "Category",     "path": "$.Category",     "datatype": "string"   },'
+'  { "column": "Description",  "path": "$.Description",  "datatype": "string"   },'
+'  { "column": "IsBuiltIn",    "path": "$.IsBuiltIn",    "datatype": "bool"     },'
+'  { "column": "IsActive",     "path": "$.IsActive",     "datatype": "bool"     },'
+'  { "column": "RegisteredBy", "path": "$.RegisteredBy", "datatype": "string"   }'
+']'
+
+.create-or-alter table FDAConfiguration ingestion json mapping 'FDAConfigurationMapping'
+'['
+'  { "column": "Timestamp", "path": "$.Timestamp", "datatype": "datetime" },'
+'  { "column": "Key",       "path": "$.Key",       "datatype": "string"   },'
+'  { "column": "Value",     "path": "$.Value",     "datatype": "dynamic"  },'
+'  { "column": "UpdatedBy", "path": "$.UpdatedBy", "datatype": "string"   },'
+'  { "column": "Notes",     "path": "$.Notes",     "datatype": "string"   }'
+']'
+
+// Enable streaming ingestion on raw tables for sub-second freshness.
+.alter table FDAInteractionsRaw  policy streamingingestion enable
+.alter table FDAExecutionsRaw    policy streamingingestion enable
+.alter table FDAAuthEventsRaw    policy streamingingestion enable
+.alter table FDACostMeteringRaw  policy streamingingestion enable
+.alter table FDALogEventsRaw     policy streamingingestion enable
+.alter table FDALogLevels        policy streamingingestion enable
+.alter table FDAConfiguration    policy streamingingestion enable

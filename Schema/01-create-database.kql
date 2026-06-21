@@ -1,0 +1,21 @@
+// =====================================================================
+// 01-create-database.kql
+// Run against an existing Eventhouse cluster, NOT against an empty cluster.
+// The PowerShell module's Initialize-FDAObservability invokes this for you;
+// you only run it manually if you are bootstrapping a database outside the
+// module.
+// =====================================================================
+
+// Database creation is performed via Fabric REST (Eventhouse item create) and
+// then via Kusto Management Endpoint:
+//   .create database FDAObs persist (
+//       @"https://<adls>.dfs.core.windows.net/<container>/md",
+//       @"https://<adls>.dfs.core.windows.net/<container>/data"
+//   )
+// Inside a Fabric Eventhouse, the database is created as a Fabric item; the
+// module calls POST /v1/workspaces/{workspaceId}/eventhouses/{eventhouseId}/databases.
+
+// After the database exists, the rest of the scripts (02..08) are executed
+// against it.
+
+.show database FDAObs principals

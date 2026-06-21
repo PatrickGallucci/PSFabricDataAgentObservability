@@ -1,0 +1,161 @@
+// =====================================================================
+// 02-create-tables.kql
+// Raw landing tables (JSON-shaped) + curated tables (typed columns).
+// Update policies in 04 reshape raw -> curated on ingest.
+// =====================================================================
+
+// ---------- RAW landing tables ----------------------------------------
+
+.create-merge table FDAInteractionsRaw (
+    IngestTime:    datetime,
+    Payload:       dynamic
+) with (folder = 'Raw', docstring = 'JSON landing for FDA proxy capture events.')
+
+.create-merge table FDAExecutionsRaw (
+    IngestTime:    datetime,
+    Payload:       dynamic
+) with (folder = 'Raw', docstring = 'JSON landing for downstream semantic-model execution telemetry.')
+
+.create-merge table FDAAuthEventsRaw (
+    IngestTime:    datetime,
+    Payload:       dynamic
+) with (folder = 'Raw', docstring = 'JSON landing for governance and auth events (Purview / M365 audit).')
+
+.create-merge table FDACostMeteringRaw (
+    IngestTime:    datetime,
+    Payload:       dynamic
+) with (folder = 'Raw', docstring = 'JSON landing for cost / usage metering events.')
+
+.create-merge table FDALogEventsRaw (
+    IngestTime:    datetime,
+    Payload:       dynamic
+) with (folder = 'Raw', docstring = 'JSON landing for generic and custom-level log events.')
+
+// ---------- CURATED typed tables --------------------------------------
+
+.create-merge table FDAInteractions (
+    Timestamp:           datetime,
+    InteractionId:       string,
+    CorrelationId:       string,
+    SessionId:           string,
+    TenantId:            string,
+    UserPrincipalName:   string,
+    ClientApp:           string,
+    AgentId:             string,
+    AgentName:           string,
+    AgentEndpoint:       string,
+    Question:            string,
+    QuestionRedacted:    bool,
+    Reasoning:           dynamic,        // step array
+    Grounding:           dynamic,        // grounding/citation references
+    GeneratedDAX:        string,
+    Answer:              string,
+    AnswerRedacted:      bool,
+    Status:              string,         // Success | PartialCapture | Error
+    ErrorMessage:        string,
+    LatencyMs:           long,
+    PromptTokens:        long,
+    CompletionTokens:    long,
+    TotalTokens:         long,
+    LevelName:           string,
+    LevelNumeric:        int,
+    LevelCategory:       string,
+    PartialCaptureNotes: dynamic,
+    Metadata:            dynamic,
+    ConsentClaim:        string,         // populated only when PreservePII used
+    SchemaVersion:       int
+) with (folder = 'Curated', docstring = 'Typed FDA NL->DAX interaction records.')
+
+.create-merge table FDAExecutions (
+    Timestamp:           datetime,
+    ExecutionId:         string,
+    InteractionId:       string,         // FK to FDAInteractions (best-effort)
+    CorrelationId:       string,
+    TenantId:            string,
+    UserPrincipalName:   string,
+    SemanticModelId:     string,
+    SemanticModelName:   string,
+    ExecutedDAX:         string,
+    DurationMs:          long,
+    RowsReturned:        long,
+    BytesProcessed:      long,
+    CacheHit:            bool,
+    Status:              string,
+    ErrorMessage:        string,
+    Source:              string,         // 'WorkspaceMonitoring' | 'XMLA' | 'Manual'
+    LevelName:           string,
+    LevelNumeric:        int,
+    Metadata:            dynamic
+) with (folder = 'Curated', docstring = 'Downstream semantic-model query execution telemetry.')
+
+.create-merge table FDAAuthEvents (
+    Timestamp:           datetime,
+    EventId:             string,
+    CorrelationId:       string,
+    TenantId:            string,
+    UserPrincipalName:   string,
+    ClientApp:           string,
+    AuthMethod:          string,
+    Outcome:             string,
+    ConsentStatus:       string,
+    RLSContext:          dynamic,
+    IPAddress:           string,
+    UserAgent:           string,
+    Source:              string,         // 'Purview' | 'M365Audit' | 'Module'
+    LevelName:           string,
+    LevelNumeric:        int,
+    Metadata:            dynamic
+) with (folder = 'Curated', docstring = 'Governance and authentication events.')
+
+.create-merge table FDACostMetering (
+    Timestamp:               datetime,
+    MeterId:                 string,
+    InteractionId:           string,
+    UserPrincipalName:       string,
+    TenantId:                string,
+    ModelName:               string,
+    PromptTokens:            long,
+    CompletionTokens:        long,
+    TotalTokens:             long,
+    EstimatedCapacityUnits:  real,
+    EstimatedCostUSD:        real,
+    RateTableVersion:        string,
+    Metadata:                dynamic
+) with (folder = 'Curated', docstring = 'Per-call cost and capacity-unit estimates.')
+
+.create-merge table FDALogEvents (
+    Timestamp:           datetime,
+    EventId:             string,
+    CorrelationId:       string,
+    SessionId:           string,
+    TenantId:            string,
+    UserPrincipalName:   string,
+    Source:              string,
+    Category:            string,
+    LevelName:           string,
+    LevelNumeric:        int,
+    Message:             string,
+    Properties:          dynamic,
+    Exception:           dynamic
+) with (folder = 'Curated', docstring = 'Generic log events including custom-level entries.')
+
+// ---------- Operational tables ---------------------------------------
+
+.create-merge table FDALogLevels (
+    Timestamp:           datetime,
+    Name:                string,
+    Numeric:             int,
+    Category:            string,
+    Description:         string,
+    IsBuiltIn:           bool,
+    IsActive:            bool,
+    RegisteredBy:        string
+) with (folder = 'Operational', docstring = 'Versioned log-level registry. Latest-by-Name wins.')
+
+.create-merge table FDAConfiguration (
+    Timestamp:           datetime,
+    Key:                 string,
+    Value:               dynamic,
+    UpdatedBy:           string,
+    Notes:               string
+) with (folder = 'Operational', docstring = 'Versioned runtime configuration. Latest-by-Key wins.')

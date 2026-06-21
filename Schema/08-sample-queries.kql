@@ -1,0 +1,76 @@
+// =====================================================================
+// 08-sample-queries.kql
+// Operator runbook — paste these into a Fabric KQL Queryset against
+// the FDAObs database.
+// =====================================================================
+
+// --- Latest 20 interactions, all fields trimmed for readability.
+FDAInteractions
+| top 20 by Timestamp desc
+| project Timestamp, UserPrincipalName, AgentName, Status, LatencyMs,
+          QuestionPreview = substring(Question, 0, 100),
+          DAXPreview = substring(GeneratedDAX, 0, 200)
+
+// --- Find a specific user's failed interactions in the last day.
+FDAInteractions
+| where Timestamp > ago(1d) and UserPrincipalName == 'patrick.gallucci@microsoft.com' and Status != 'Success'
+| project Timestamp, AgentName, Status, ErrorMessage, Question, GeneratedDAX
+
+// --- Full timeline for one interaction (uses helper from 06-functions.kql).
+GetInteractionTimeline('00000000-0000-0000-0000-000000000000')
+
+// --- Slowest 25 calls in the last 24 hours.
+GetSlowestQueries(24h, 25)
+
+// --- Failure summary grouped by root cause.
+GetFailureSummary(24h)
+
+// --- Per-user activity rollup.
+GetUserActivity('patrick.gallucci@microsoft.com', 7d)
+
+// --- Cost rollup by user over 30 days.
+GetCostByUser(30d)
+
+// --- Daily ops snapshot.
+GetDailyOpsSnapshot(24h)
+
+// --- Match a generated DAX run via the proxy to its actual execution.
+//     Joins on CorrelationId. Executions captured via Workspace Monitoring
+//     export will lack InteractionId; we fall back to CorrelationId match.
+FDAInteractions
+| where Timestamp > ago(1d)
+| join kind=leftouter (
+    FDAExecutions | where Timestamp > ago(1d)
+) on CorrelationId
+| project Timestamp, UserPrincipalName, AgentName,
+          GeneratedDAX, ExecutedDAX,
+          LatencyMs, DurationMs,
+          Status1 = Status, Status2 = Status1
+| top 50 by Timestamp desc
+
+// --- Custom-level filter example. Show only Critical-or-above events.
+let minNumeric = toscalar(
+    GetActiveLogLevels()
+    | where Name == 'Critical'
+    | project Numeric);
+FDALogEvents
+| where Timestamp > ago(7d) and LevelNumeric >= minNumeric
+| project Timestamp, LevelName, Category, Source, Message
+
+// --- Show only entries at a registered custom level (e.g., 'Audit').
+FDALogEvents
+| where Timestamp > ago(30d) and LevelName == 'Audit'
+| project Timestamp, UserPrincipalName, Message, Properties
+
+// --- Auth failure trend by hour.
+FDAAuthEvents
+| where Timestamp > ago(7d) and Outcome != 'Success'
+| summarize Failures = count() by bin(Timestamp, 1h)
+| render timechart
+
+// --- Capacity hot-spot: which user is driving the most tokens?
+FDACostMetering
+| where Timestamp > ago(7d)
+| summarize Tokens = sum(TotalTokens) by UserPrincipalName
+| top 10 by Tokens desc
+| render columnchart

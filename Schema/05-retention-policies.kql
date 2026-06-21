@@ -1,0 +1,30 @@
+// =====================================================================
+// 05-retention-policies.kql
+// Hot/soft-delete retention per table. Override per-tenant via
+// Set-FDAObservabilityConfig -RetentionDays @{Table='FDAInteractions'; Days=180}.
+// =====================================================================
+
+// Raw landing -> short retention; curated is the long-lived source of truth.
+.alter table FDAInteractionsRaw  policy retention softdelete = 7d  recoverability = enabled
+.alter table FDAExecutionsRaw    policy retention softdelete = 7d  recoverability = enabled
+.alter table FDAAuthEventsRaw    policy retention softdelete = 7d  recoverability = enabled
+.alter table FDACostMeteringRaw  policy retention softdelete = 7d  recoverability = enabled
+.alter table FDALogEventsRaw     policy retention softdelete = 7d  recoverability = enabled
+
+// Curated retention. 90d hot, default.
+.alter table FDAInteractions    policy retention softdelete = 90d  recoverability = enabled
+.alter table FDAExecutions      policy retention softdelete = 90d  recoverability = enabled
+.alter table FDAAuthEvents      policy retention softdelete = 365d recoverability = enabled  // governance keeps longer
+.alter table FDACostMetering    policy retention softdelete = 365d recoverability = enabled  // billing/chargeback
+.alter table FDALogEvents       policy retention softdelete = 90d  recoverability = enabled
+
+// Operational tables: keep history.
+.alter table FDALogLevels      policy retention softdelete = 3650d recoverability = enabled
+.alter table FDAConfiguration  policy retention softdelete = 3650d recoverability = enabled
+
+// Caching policy (hot cache) — keep recent 30d in hot for query performance.
+.alter table FDAInteractions   policy caching hot = 30d
+.alter table FDAExecutions     policy caching hot = 30d
+.alter table FDAAuthEvents     policy caching hot = 30d
+.alter table FDACostMetering   policy caching hot = 30d
+.alter table FDALogEvents      policy caching hot = 30d

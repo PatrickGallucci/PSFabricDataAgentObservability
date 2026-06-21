@@ -1,0 +1,14 @@
+// =====================================================================
+// 07-seed-log-levels.kql
+// Seed the built-in log levels. Custom levels are appended at runtime by
+// Register-FDALogLevel. Latest-by-Name wins (see GetActiveLogLevels()).
+// =====================================================================
+
+.ingest inline into table FDALogLevels
+    with (format = 'csv', ignoreFirstRecord = false)
+<|
+2026-01-01T00:00:00Z,Verbose,10,System,Raw payloads and full reasoning traces.,true,true,system
+2026-01-01T00:00:00Z,Information,30,System,Default operational level.,true,true,system
+2026-01-01T00:00:00Z,Warning,50,System,Degraded responses, retries, slow queries.,true,true,system
+2026-01-01T00:00:00Z,Error,70,System,Failed FDA calls and downstream DAX errors.,true,true,system
+2026-01-01T00:00:00Z,Critical,90,System,Auth failures, data exposure, ingest loss.,true,true,system

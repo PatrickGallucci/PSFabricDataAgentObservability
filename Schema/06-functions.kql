@@ -1,0 +1,127 @@
+// =====================================================================
+// 06-functions.kql
+// Reusable KQL functions for operators. Called via Search-FDALog and
+// New-FDAObservabilityReport; safe to call directly in KQL Queryset too.
+// =====================================================================
+
+// --- Resolve the latest registered configuration value for a Key. ----
+.create-or-alter function with (folder = 'Helpers', docstring = 'Latest config value by key.')
+GetConfigValue(key: string) {
+    FDAConfiguration
+    | where Key == key
+    | top 1 by Timestamp desc
+    | project Value
+}
+
+// --- Resolve the latest active log levels (built-in + custom). -------
+.create-or-alter function with (folder = 'Helpers', docstring = 'Latest active log levels.')
+GetActiveLogLevels() {
+    FDALogLevels
+    | summarize arg_max(Timestamp, *) by Name
+    | where IsActive == true
+    | project Name, Numeric, Category, Description, IsBuiltIn
+}
+
+// --- End-to-end timeline for a single interaction. -------------------
+.create-or-alter function with (folder = 'Reports', docstring = 'Full timeline for one interaction.')
+GetInteractionTimeline(interactionId: string) {
+    let i = FDAInteractions  | where InteractionId == interactionId | extend SortKey = Timestamp, Source = 'Interaction'   | project Timestamp, Source, Detail = pack('Question', Question, 'GeneratedDAX', GeneratedDAX, 'Status', Status, 'LatencyMs', LatencyMs);
+    let e = FDAExecutions    | where InteractionId == interactionId | extend SortKey = Timestamp, Source = 'Execution'     | project Timestamp, Source, Detail = pack('ExecutedDAX', ExecutedDAX, 'DurationMs', DurationMs, 'RowsReturned', RowsReturned, 'CacheHit', CacheHit, 'Status', Status);
+    let c = FDACostMetering  | where InteractionId == interactionId | extend SortKey = Timestamp, Source = 'Cost'          | project Timestamp, Source, Detail = pack('Tokens', TotalTokens, 'EstimatedCU', EstimatedCapacityUnits, 'EstimatedUSD', EstimatedCostUSD);
+    let l = FDALogEvents     | where CorrelationId in (toscalar(FDAInteractions | where InteractionId == interactionId | take 1 | project CorrelationId)) | extend SortKey = Timestamp, Source = 'Log' | project Timestamp, Source, Detail = pack('Level', LevelName, 'Message', Message);
+    union i, e, c, l
+    | sort by Timestamp asc
+}
+
+// --- Per-user activity rollup. ---------------------------------------
+.create-or-alter function with (folder = 'Reports', docstring = 'Activity rollup by user, with cost and latency.')
+GetUserActivity(upn: string, lookback: timespan = 7d) {
+    let interactions =
+        FDAInteractions
+        | where Timestamp > ago(lookback) and UserPrincipalName =~ upn
+        | summarize Calls = count(),
+                    Errors = countif(Status == 'Error'),
+                    PartialCaptures = countif(Status == 'PartialCapture'),
+                    AvgLatencyMs = avg(LatencyMs),
+                    P95LatencyMs = percentile(LatencyMs, 95),
+                    Tokens = sum(TotalTokens)
+                  by UserPrincipalName;
+    let cost =
+        FDACostMetering
+        | where Timestamp > ago(lookback) and UserPrincipalName =~ upn
+        | summarize EstUSD = sum(EstimatedCostUSD), EstCU = sum(EstimatedCapacityUnits) by UserPrincipalName;
+    interactions
+    | join kind=leftouter cost on UserPrincipalName
+    | project UserPrincipalName, Calls, Errors, PartialCaptures, AvgLatencyMs, P95LatencyMs, Tokens, EstUSD, EstCU
+}
+
+// --- Failures grouped by root cause. ---------------------------------
+.create-or-alter function with (folder = 'Reports', docstring = 'Failure summary grouped by error class.')
+GetFailureSummary(lookback: timespan = 24h) {
+    let interactionErrors =
+        FDAInteractions
+        | where Timestamp > ago(lookback) and Status in ('Error', 'PartialCapture')
+        | extend Class = case(
+            isnotempty(ErrorMessage) and ErrorMessage has 'auth',        'AuthError',
+            isnotempty(ErrorMessage) and ErrorMessage has 'timeout',     'Timeout',
+            isnotempty(ErrorMessage) and ErrorMessage has 'permission',  'Permission',
+            isnotempty(ErrorMessage) and ErrorMessage has 'rls',         'RLS',
+            Status == 'PartialCapture',                                   'PartialCapture',
+            'Other')
+        | summarize Count = count(), Sample = any(ErrorMessage) by Class, AgentName;
+    let executionErrors =
+        FDAExecutions
+        | where Timestamp > ago(lookback) and Status == 'Error'
+        | summarize Count = count(), Sample = any(ErrorMessage) by Class = 'DAXExecution', AgentName = SemanticModelName;
+    union interactionErrors, executionErrors
+    | sort by Count desc
+}
+
+// --- Slowest interactions / queries. ---------------------------------
+.create-or-alter function with (folder = 'Reports', docstring = 'Top-N slowest interactions.')
+GetSlowestQueries(lookback: timespan = 24h, topN: long = 25) {
+    FDAInteractions
+    | where Timestamp > ago(lookback)
+    | top topN by LatencyMs desc
+    | project Timestamp, UserPrincipalName, AgentName, LatencyMs, TotalTokens,
+              QuestionPreview = substring(Question, 0, 120),
+              GeneratedDAXPreview = substring(GeneratedDAX, 0, 240),
+              Status, InteractionId
+}
+
+// --- Cost rollup by user. --------------------------------------------
+.create-or-alter function with (folder = 'Reports', docstring = 'Cost by user over a window.')
+GetCostByUser(lookback: timespan = 30d) {
+    FDACostMetering
+    | where Timestamp > ago(lookback)
+    | summarize Calls = count(),
+                Tokens = sum(TotalTokens),
+                EstimatedCU = sum(EstimatedCapacityUnits),
+                EstimatedUSD = sum(EstimatedCostUSD)
+              by UserPrincipalName
+    | sort by EstimatedUSD desc
+}
+
+// --- Daily ops report shape (used by New-FDAObservabilityReport). ----
+.create-or-alter function with (folder = 'Reports', docstring = 'Single-row daily ops snapshot.')
+GetDailyOpsSnapshot(lookback: timespan = 24h) {
+    let totals = FDAInteractions
+        | where Timestamp > ago(lookback)
+        | summarize TotalCalls = count(),
+                    Errors = countif(Status == 'Error'),
+                    PartialCaptures = countif(Status == 'PartialCapture'),
+                    AvgLatencyMs = avg(LatencyMs),
+                    P95LatencyMs = percentile(LatencyMs, 95),
+                    UniqueUsers = dcount(UserPrincipalName);
+    let cost = FDACostMetering
+        | where Timestamp > ago(lookback)
+        | summarize Tokens = sum(TotalTokens), EstUSD = sum(EstimatedCostUSD);
+    let auth = FDAAuthEvents
+        | where Timestamp > ago(lookback)
+        | summarize AuthFailures = countif(Outcome != 'Success'), AuthTotal = count();
+    totals
+    | extend k = 1
+    | join kind=leftouter (cost | extend k = 1) on k
+    | join kind=leftouter (auth | extend k = 1) on k
+    | project-away k, k1, k2
+}
