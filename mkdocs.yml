@@ -1,0 +1,56 @@
+site_name: FabricDataAgentObservability
+site_description: Production-grade observability for Fabric Data Agent NL-to-DAX interactions, backed by a Fabric Eventhouse (KQL) database.
+site_author: Patrick Gallucci
+site_url: https://patrickgallucci.github.io/PSFabricDataAgentObservability/
+
+repo_url: https://github.com/PatrickGallucci/PSFabricDataAgentObservability
+repo_name: PatrickGallucci/PSFabricDataAgentObservability
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.instant
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.details
+
+nav:
+  - Home: README.md
+  - Architecture: ARCHITECTURE.md
+  - Schema: SCHEMA.md
+  - Operations: OPERATIONS.md
+  - Changelog: changelog.md

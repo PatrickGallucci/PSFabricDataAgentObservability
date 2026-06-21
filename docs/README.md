@@ -141,4 +141,4 @@ The FDA service does **not** expose a third-party hook to intercept its NL-to-DA
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — full architecture, design choices, trade-offs
 - [`SCHEMA.md`](SCHEMA.md) — table reference
 - [`OPERATIONS.md`](OPERATIONS.md) — runbook, dashboards, retention, alerts
-- [`CHANGELOG.md`](../CHANGELOG.md)
+- [Changelog](changelog.md)

@@ -63,7 +63,7 @@ function Write-FDALog {
     $catKey = 'MinLevelByCategory.' + $Category
     if ($config -and $config.PSObject.Properties[$catKey]) {
         $catCfg = $config.$catKey
-        if ($catCfg.Numeric -ne $null) { $minNumeric = [int]$catCfg.Numeric }
+        if ($null -ne $catCfg.Numeric) { $minNumeric = [int]$catCfg.Numeric }
     }
     if ($resolved.Numeric -lt $minNumeric) {
         Write-Verbose "Suppressed: level $($resolved.Name)($($resolved.Numeric)) below threshold $minNumeric"

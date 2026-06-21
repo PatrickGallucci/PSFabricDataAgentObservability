@@ -54,7 +54,7 @@ function Invoke-EventhouseIngest {
                            ($_.Exception.Message -match 'transient|timeout|temporarily')
             if ($attempt -ge $MaxRetries -or -not $isTransient) {
                 # Spool to disk so we don't lose the events.
-                try { Save-FDASpool -TableName $TableName -MappingName $MappingName -Records $Records } catch { }
+                try { Save-FDASpool -TableName $TableName -MappingName $MappingName -Records $Records } catch { Write-Verbose "Spool fallback failed: $($_.Exception.Message)" }
                 throw "Eventhouse ingest failed after $attempt attempts: $($_.Exception.Message)"
             }
             Start-Sleep -Seconds $delaySec

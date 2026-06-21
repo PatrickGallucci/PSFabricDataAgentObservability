@@ -89,7 +89,7 @@ function Start-FDAFlushTimer {
     $timer.Interval = $IntervalSeconds * 1000
     $timer.AutoReset = $true
     $action = {
-        try { Invoke-FDAFlush } catch { }
+        try { Invoke-FDAFlush } catch { Write-Verbose "Background flush error: $($_.Exception.Message)" }
     }
     Register-ObjectEvent -InputObject $timer -EventName Elapsed -Action $action | Out-Null
     $timer.Start()
@@ -103,7 +103,7 @@ function Stop-FDAFlushTimer {
         try {
             $script:FDAState.FlushTimer.Stop()
             $script:FDAState.FlushTimer.Dispose()
-        } catch { }
+        } catch { Write-Verbose "Flush timer dispose error: $($_.Exception.Message)" }
         $script:FDAState.FlushTimer = $null
     }
     # One final synchronous drain so we don't lose anything on disconnect.

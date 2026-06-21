@@ -1,0 +1,71 @@
+name: Publish to PowerShell Gallery
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Validate & publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tooling
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module Pester           -MinimumVersion 5.5.0  -Force -Scope CurrentUser -SkipPublisherCheck
+          Install-Module PSScriptAnalyzer -MinimumVersion 1.22.0 -Force -Scope CurrentUser
+
+      - name: Validate before publish
+        shell: pwsh
+        run: |
+          Test-ModuleManifest ./FabricDataAgentObservability.psd1 | Out-Null
+          $errors = @(Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./PSScriptAnalyzerSettings.psd1 |
+                      Where-Object Severity -eq 'Error')
+          if ($errors.Count) { throw "ScriptAnalyzer errors: $($errors.Count)" }
+          $cfg = New-PesterConfiguration
+          $cfg.Run.Path = './tests'
+          $cfg.Run.Exit = $true
+          Invoke-Pester -Configuration $cfg
+
+      - name: Verify tag matches module version
+        shell: pwsh
+        run: |
+          $ver = (Test-ModuleManifest ./FabricDataAgentObservability.psd1).Version.ToString()
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          if ($tag -and $tag -ne $ver) {
+            throw "Tag ($tag) does not match module version ($ver)."
+          }
+          "Publishing version $ver"
+
+      - name: Publish (idempotent)
+        shell: pwsh
+        env:
+          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+        run: |
+          if (-not $env:PSGALLERY_API_KEY) {
+            Write-Warning 'PSGALLERY_API_KEY secret is not set; skipping publish.'
+            exit 0
+          }
+          $name = 'FabricDataAgentObservability'
+          $ver  = (Test-ModuleManifest "./$name.psd1").Version.ToString()
+          $existing = Find-Module -Name $name -RequiredVersion $ver -ErrorAction SilentlyContinue
+          if ($existing) {
+            Write-Host "Version $ver already published; nothing to do."
+            exit 0
+          }
+          $staging = Join-Path ([System.IO.Path]::GetTempPath()) $name
+          New-Item -ItemType Directory -Path $staging -Force | Out-Null
+          Copy-Item "./$name.psd1","./$name.psm1" $staging
+          foreach ($d in 'Public','Private','Schema') {
+            if (Test-Path "./$d") { Copy-Item "./$d" $staging -Recurse }
+          }
+          Publish-Module -Path $staging -NuGetApiKey $env:PSGALLERY_API_KEY -Verbose
+          Write-Host "Published $name $ver."

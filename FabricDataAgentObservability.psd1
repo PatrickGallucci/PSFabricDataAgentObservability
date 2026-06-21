@@ -36,9 +36,9 @@
     PrivateData          = @{
         PSData = @{
             Tags         = @('Fabric', 'PowerBI', 'DataAgent', 'NL2DAX', 'Observability', 'Logging', 'Eventhouse', 'KQL', 'Telemetry', 'Microsoft365')
-            ProjectUri   = ''
-            LicenseUri   = ''
-            ReleaseNotes = 'Initial release. Proxy capture for FDA NL->DAX, Eventhouse sink, SP/MI/User auth, dynamic custom log levels, governance + cost/usage capture.'
+            ProjectUri   = 'https://github.com/PatrickGallucci/PSFabricDataAgentObservability'
+            LicenseUri   = 'https://github.com/PatrickGallucci/PSFabricDataAgentObservability/blob/main/LICENSE'
+            ReleaseNotes = 'Initial release. Proxy capture for FDA NL->DAX, Eventhouse sink, SP/MI/User auth, dynamic custom log levels, governance + cost/usage capture. See CHANGELOG.md for full notes.'
         }
     }
 }

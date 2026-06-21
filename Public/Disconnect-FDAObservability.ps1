@@ -6,7 +6,7 @@ function Disconnect-FDAObservability {
     #>
     [CmdletBinding()]
     param()
-    try { Stop-FDAFlushTimer } catch { }
+    try { Stop-FDAFlushTimer } catch { Write-Verbose "Stop-FDAFlushTimer during disconnect: $($_.Exception.Message)" }
     $script:FDAState.TokenCache = @{}
     $script:FDAState.TokenProviders = @{}
     $script:FDAState.Connected = $false

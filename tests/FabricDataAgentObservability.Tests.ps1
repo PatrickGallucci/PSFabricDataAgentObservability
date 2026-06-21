@@ -90,10 +90,9 @@ Describe 'Cost estimation' {
         $cfg = [pscustomobject]@{
             CapacityRates = [pscustomobject]@{ TokensPerCU = 2000; USDPerCU = 0.10; Version = 'test' }
         }
-        $r = & (Get-Module FabricDataAgentObservability) `
-            -ArgumentList $cfg {
-                param($cfg) Get-FDACostEstimate -PromptTokens 4000 -CompletionTokens 0 -Config $cfg
-            }
+        $r = & (Get-Module FabricDataAgentObservability) {
+            param($cfg) Get-FDACostEstimate -PromptTokens 4000 -CompletionTokens 0 -Config $cfg
+        } $cfg
         $r.CapacityUnits    | Should -Be 2.0
         $r.USD              | Should -Be 0.2
         $r.RateTableVersion | Should -Be 'test'
@@ -115,5 +114,45 @@ Describe 'Level registry merge (offline)' {
     It 'returns built-ins when no DB connection' {
         $r = Get-FDALogLevel
         ($r | Where-Object Name -eq 'Critical').Numeric | Should -Be 90
+    }
+}
+
+Describe 'Get-FDAAuthEvent contract' {
+    It 'is exported by the module' {
+        Get-Command Get-FDAAuthEvent -Module FabricDataAgentObservability |
+            Should -Not -BeNullOrEmpty
+    }
+    It 'constrains Outcome to Success/Failure' {
+        $vv = (Get-Command Get-FDAAuthEvent).Parameters['Outcome'].Attributes.ValidValues
+        $vv | Should -Contain 'Success'
+        $vv | Should -Contain 'Failure'
+    }
+    It 'constrains Source to known origins' {
+        $vv = (Get-Command Get-FDAAuthEvent).Parameters['Source'].Attributes.ValidValues
+        (($vv | Sort-Object) -join ',') | Should -Be 'M365Audit,Module,Purview'
+    }
+    It 'makes EventId mandatory in the ById parameter set' {
+        $attrs = (Get-Command Get-FDAAuthEvent).Parameters['EventId'].Attributes |
+            Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] }
+        ($attrs | Where-Object ParameterSetName -eq 'ById').Mandatory | Should -BeTrue
+    }
+}
+
+Describe 'Public function parameter contracts' {
+    It 'Invoke-FDAQuery requires AgentEndpoint and Question' {
+        $p = (Get-Command Invoke-FDAQuery).Parameters
+        ($p['AgentEndpoint'].Attributes |
+            Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] }).Mandatory |
+            Should -Contain $true
+        ($p['Question'].Attributes |
+            Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] }).Mandatory |
+            Should -Contain $true
+    }
+    It 'every exported function is resolvable' {
+        $exported = (Get-Module FabricDataAgentObservability).ExportedFunctions.Keys
+        $exported.Count | Should -BeGreaterThan 0
+        foreach ($f in $exported) {
+            Get-Command $f -ErrorAction Stop | Should -Not -BeNullOrEmpty
+        }
     }
 }

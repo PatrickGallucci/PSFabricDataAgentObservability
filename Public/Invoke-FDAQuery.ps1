@@ -95,7 +95,7 @@ function Invoke-FDAQuery {
     }
     $redactionPatterns = $script:DefaultRedactionPatterns
     if ($config -and $config.PSObject.Properties['RedactionPatterns'] -and $config.RedactionPatterns) {
-        try { $redactionPatterns = ConvertTo-FDAHashtable $config.RedactionPatterns } catch { }
+        try { $redactionPatterns = ConvertTo-FDAHashtable $config.RedactionPatterns } catch { Write-Verbose "Falling back to default redaction patterns: $($_.Exception.Message)" }
     }
 
     $levelObj = Resolve-LogLevel -Level $Level
