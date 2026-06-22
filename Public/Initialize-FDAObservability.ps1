@@ -7,15 +7,21 @@ function Initialize-FDAObservability {
         Idempotent. Safe to re-run after schema changes — uses
         .create-merge / .create-or-alter throughout.
 
-        Two modes:
+        Three modes:
           1. Use an existing Eventhouse:   -EventhouseId <guid>
           2. Provision the Eventhouse:     -CreateEventhouse -EventhouseName <name>
+          3. Interactive: omit -WorkspaceId and/or -EventhouseId and you are
+             prompted to select an existing Fabric workspace / Eventhouse or
+             create a new one.
 
     .PARAMETER WorkspaceId
-        Target Fabric workspace id.
+        Target Fabric workspace id. Optional — when omitted you are prompted to
+        select an existing workspace or create a new one.
 
     .PARAMETER EventhouseId
-        Existing Eventhouse item id. Omit when -CreateEventhouse is set.
+        Existing Eventhouse item id. Omit when -CreateEventhouse is set. When
+        omitted without -CreateEventhouse you are prompted to select an
+        existing Eventhouse or create a new one.
 
     .PARAMETER CreateEventhouse
         Provision a new Eventhouse in -WorkspaceId.
@@ -36,13 +42,16 @@ function Initialize-FDAObservability {
     .EXAMPLE
         Initialize-FDAObservability -WorkspaceId 'w...' -CreateEventhouse `
             -EventhouseName 'FDAObservabilityProd'
+
+    .EXAMPLE
+        # Interactive: pick (or create) the workspace and Eventhouse, then provision.
+        Initialize-FDAObservability
     #>
     [CmdletBinding(SupportsShouldProcess, DefaultParameterSetName = 'Existing')]
     param(
-        [Parameter(Mandatory)]
         [string] $WorkspaceId,
 
-        [Parameter(Mandatory, ParameterSetName = 'Existing')]
+        [Parameter(ParameterSetName = 'Existing')]
         [string] $EventhouseId,
 
         [Parameter(Mandatory, ParameterSetName = 'Create')]
@@ -58,6 +67,11 @@ function Initialize-FDAObservability {
 
     if (-not $script:FDAState.Connected) {
         throw 'Not connected. Call Connect-FDAObservability first (you can connect against any Eventhouse in the workspace, then Initialize will resolve / create the target).'
+    }
+
+    # Resolve the workspace — select or create interactively when not supplied.
+    if (-not $WorkspaceId) {
+        $WorkspaceId = Resolve-FDAWorkspace
     }
 
     # Resolve or create the Eventhouse.
@@ -77,6 +91,10 @@ function Initialize-FDAObservability {
         }
         Write-Verbose "Eventhouse created: $($endpoints.DisplayName) ($EventhouseId)"
     } else {
+        # Select an existing Eventhouse or create one interactively when not supplied.
+        if (-not $EventhouseId) {
+            $EventhouseId = Resolve-FDAEventhouse -WorkspaceId $WorkspaceId
+        }
         $endpoints = Get-FDAEventhouseEndpoint -WorkspaceId $WorkspaceId -EventhouseId $EventhouseId
     }
 

@@ -31,6 +31,76 @@ function Get-FDAEventhouseEndpoint {
     }
 }
 
+function Get-FDAFabricCollection {
+    <#
+    .SYNOPSIS
+        GET a paged Fabric REST collection, following continuationUri until
+        the list is exhausted. Returns the flattened 'value' items.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] [string] $Url)
+
+    $token = Get-FDAAccessToken -Scope 'https://api.fabric.microsoft.com/.default'
+    $headers = @{ Authorization = "Bearer $token" }
+    $all = [System.Collections.Generic.List[object]]::new()
+    $next = $Url
+    while ($next) {
+        $resp = Invoke-RestMethod -Method Get -Uri $next -Headers $headers -ErrorAction Stop
+        if (($resp.PSObject.Properties.Name -contains 'value') -and $resp.value) {
+            $all.AddRange(@($resp.value))
+        }
+        # continuationUri is only present while more pages remain.
+        $next = $null
+        if (($resp.PSObject.Properties.Name -contains 'continuationUri') -and $resp.continuationUri) {
+            $next = $resp.continuationUri
+        }
+    }
+    return $all
+}
+
+function Get-FDAWorkspaceList {
+    <#
+    .SYNOPSIS
+        List the Fabric workspaces the caller can access.
+    #>
+    [CmdletBinding()]
+    param()
+    return Get-FDAFabricCollection -Url 'https://api.fabric.microsoft.com/v1/workspaces'
+}
+
+function Get-FDAEventhouseList {
+    <#
+    .SYNOPSIS
+        List the Eventhouses in a Fabric workspace.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] [string] $WorkspaceId)
+    $url = 'https://api.fabric.microsoft.com/v1/workspaces/{0}/eventhouses' -f $WorkspaceId
+    return Get-FDAFabricCollection -Url $url
+}
+
+function New-FDAWorkspace {
+    <#
+    .SYNOPSIS
+        Create a new Fabric workspace.
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)] [string] $DisplayName,
+        [string] $Description = 'Created by PSFabricDataAgentObservability.'
+    )
+    $url = 'https://api.fabric.microsoft.com/v1/workspaces'
+    $token = Get-FDAAccessToken -Scope 'https://api.fabric.microsoft.com/.default'
+    $headers = @{
+        Authorization  = "Bearer $token"
+        'Content-Type' = 'application/json; charset=utf-8'
+    }
+    $body = @{ displayName = $DisplayName; description = $Description } | ConvertTo-Json
+    if ($PSCmdlet.ShouldProcess($DisplayName, 'Create Fabric workspace')) {
+        return Invoke-RestMethod -Method Post -Uri $url -Headers $headers -Body $body -ErrorAction Stop
+    }
+}
+
 function New-FDAEventhouse {
     <#
     .SYNOPSIS

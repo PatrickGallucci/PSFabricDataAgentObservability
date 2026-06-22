@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-06-21
+
+### Added
+
+- **Interactive connect & provisioning.** `Connect-FDAObservability` no longer requires `-TenantId`, `-WorkspaceId`, or `-EventhouseId`. When omitted (UserDelegated), you sign in with the device-code flow, the module enumerates the tenants you can access — prompting only when there is more than one (falling back to the token's tenant claim if Azure Resource Manager is unreachable) — then lists Fabric workspaces and Eventhouses so you can select an existing one or create a new one from a menu.
+- `Initialize-FDAObservability` likewise makes `-WorkspaceId` and `-EventhouseId` optional; omit them to select or create the target workspace and Eventhouse interactively before provisioning. The explicit `-EventhouseId` and `-CreateEventhouse -EventhouseName` paths are unchanged.
+- New internal Fabric REST helpers: `Get-FDAWorkspaceList`, `Get-FDAEventhouseList`, `New-FDAWorkspace` (paged via `continuationUri`), plus the interactive resolvers `Resolve-FDATenant`, `Resolve-FDAWorkspace`, and `Resolve-FDAEventhouse`.
+
+### Changed
+
+- The UserDelegated token provider now resolves its authority at call time (`organizations` until a tenant is selected, then the chosen tenant), so sign-in can complete before the tenant is known.
+
+> **Compatibility:** fully backward compatible — existing scripts that pass `-TenantId`/`-WorkspaceId`/`-EventhouseId` behave exactly as before. ServicePrincipal still requires `-TenantId`; ManagedIdentity still takes it from IMDS.
+
 ## [1.0.1] - 2026-06-21
 
 ### Changed

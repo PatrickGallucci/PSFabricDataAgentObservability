@@ -2,7 +2,7 @@
 
 ## Deployment checklist
 
-1. **Provision the Eventhouse** — either point at an existing one or pass `-CreateEventhouse -EventhouseName <name>` to `Initialize-FDAObservability`.
+1. **Provision the Eventhouse** — either point at an existing one, pass `-CreateEventhouse -EventhouseName <name>` to `Initialize-FDAObservability`, or omit `-WorkspaceId`/`-EventhouseId` entirely to select or create the workspace and Eventhouse interactively.
 2. **Run `Initialize-FDAObservability`** — creates tables, ingestion mappings, update policies, retention policies, and seed levels. Idempotent.
 3. **Wire the proxy** — replace every direct call to the FDA published endpoint with `Invoke-FDAQuery`. App teams should not call FDA directly.
 4. **Enable Workspace Monitoring** on the underlying semantic model (Power BI workspace settings). Direct the export to the same Eventhouse, or to an Eventhouse you can query from KQL. Then point downstream telemetry into the `FDAExecutionsRaw` table via a scheduled `.set-or-append` from the Workspace Monitoring source table.

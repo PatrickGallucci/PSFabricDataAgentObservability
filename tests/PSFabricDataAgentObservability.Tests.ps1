@@ -148,6 +148,32 @@ Describe 'Public function parameter contracts' {
             Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] }).Mandatory |
             Should -Contain $true
     }
+    It 'Connect-FDAObservability makes TenantId, WorkspaceId and EventhouseId optional' {
+        $p = (Get-Command Connect-FDAObservability).Parameters
+        foreach ($name in 'TenantId', 'WorkspaceId', 'EventhouseId') {
+            $mandatory = $p[$name].Attributes |
+                Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] } |
+                ForEach-Object Mandatory
+            $mandatory | Should -Not -Contain $true -Because "$name must be optional for interactive selection"
+        }
+    }
+    It 'Initialize-FDAObservability makes WorkspaceId and EventhouseId optional' {
+        $p = (Get-Command Initialize-FDAObservability).Parameters
+        foreach ($name in 'WorkspaceId', 'EventhouseId') {
+            $mandatory = $p[$name].Attributes |
+                Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] } |
+                ForEach-Object Mandatory
+            $mandatory | Should -Not -Contain $true -Because "$name must be optional for interactive selection"
+        }
+    }
+    It 'exposes interactive resolver helpers for connect/initialize' {
+        & (Get-Module PSFabricDataAgentObservability) {
+            foreach ($fn in 'Resolve-FDAWorkspace', 'Resolve-FDAEventhouse', 'Resolve-FDATenant',
+                            'Get-FDAWorkspaceList', 'Get-FDAEventhouseList', 'New-FDAWorkspace') {
+                Get-Command $fn -ErrorAction Stop | Should -Not -BeNullOrEmpty
+            }
+        }
+    }
     It 'every exported function is resolvable' {
         $exported = (Get-Module PSFabricDataAgentObservability).ExportedFunctions.Keys
         $exported.Count | Should -BeGreaterThan 0

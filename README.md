@@ -39,12 +39,21 @@ Import-Module ./PSFabricDataAgentObservability.psd1
 
 ```powershell
 # 1. Connect — pick the auth method that fits your runner.
+#    Omit TenantId/WorkspaceId/EventhouseId to sign in interactively and pick
+#    (or create) the tenant, workspace, and Eventhouse from a menu.
+Connect-FDAObservability -AuthMethod UserDelegated
+
+#    …or pass them explicitly for an unattended/scripted connect:
 Connect-FDAObservability -AuthMethod UserDelegated `
     -TenantId     '<tenant-guid>' `
     -WorkspaceId  '<workspace-guid>' `
     -EventhouseId '<eventhouse-guid>'
 
 # 2. One-time provisioning (tables, mappings, policies, functions, seed levels).
+#    Omit the ids to select or create the workspace/Eventhouse interactively.
+Initialize-FDAObservability
+
+#    …or target an existing workspace/Eventhouse explicitly:
 Initialize-FDAObservability -WorkspaceId '<workspace-guid>' -EventhouseId '<eventhouse-guid>'
 
 # 3. Replace direct FDA calls with the proxy.

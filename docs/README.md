@@ -30,12 +30,21 @@ Captures the full interaction trail — **question → reasoning → grounding �
 Import-Module ./PSFabricDataAgentObservability.psd1
 
 # 1. Connect — pick the auth method that fits your runner.
+#    Omit TenantId/WorkspaceId/EventhouseId to sign in interactively and pick
+#    (or create) the tenant, workspace, and Eventhouse from a menu.
+Connect-FDAObservability -AuthMethod UserDelegated
+
+#    …or pass them explicitly for an unattended/scripted connect:
 Connect-FDAObservability -AuthMethod UserDelegated `
     -TenantId        '<tenant-guid>' `
     -WorkspaceId     '<workspace-guid>' `
     -EventhouseId    '<eventhouse-guid>'
 
 # 2. One-time provisioning (or run examples/01-setup-eventhouse.ps1).
+#    Omit the ids to select or create the workspace/Eventhouse interactively.
+Initialize-FDAObservability
+
+#    …or target an existing workspace/Eventhouse explicitly:
 Initialize-FDAObservability -WorkspaceId '<workspace-guid>' `
                             -EventhouseId '<eventhouse-guid>'
 
@@ -44,7 +53,7 @@ $answer = Invoke-FDAQuery -AgentEndpoint 'https://<fda-endpoint>' `
                           -Question 'Revenue by region last quarter?'
 ```
 
-To provision the Eventhouse itself in one call:
+To provision a freshly-named Eventhouse in one call:
 
 ```powershell
 Initialize-FDAObservability -WorkspaceId '<ws>' -CreateEventhouse -EventhouseName 'FDAObservability'
@@ -103,8 +112,8 @@ Set-FDAObservabilityConfig -Category 'Cost'        -MinLevel 'Verbose'
 ## Cmdlet index
 
 ### Setup
-- `Initialize-FDAObservability` — provision tables, mappings, policies, functions, seed levels
-- `Connect-FDAObservability` — install token providers, resolve Eventhouse endpoints
+- `Initialize-FDAObservability` — provision tables, mappings, policies, functions, seed levels (select or create the workspace/Eventhouse interactively when ids are omitted)
+- `Connect-FDAObservability` — install token providers, resolve tenant/workspace/Eventhouse (interactively when ids are omitted)
 - `Disconnect-FDAObservability` — flush, stop timer, clear state
 - `Set-FDAObservabilityConfig` / `Get-FDAObservabilityConfig` — versioned runtime config
 

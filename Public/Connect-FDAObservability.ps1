@@ -14,8 +14,11 @@ function Connect-FDAObservability {
         ServicePrincipal | ManagedIdentity | UserDelegated
 
     .PARAMETER TenantId
-        Required for ServicePrincipal and UserDelegated. Optional for
-        ManagedIdentity (taken from IMDS metadata).
+        Required for ServicePrincipal. Optional for ManagedIdentity (taken
+        from IMDS metadata) and UserDelegated. When omitted for
+        UserDelegated, you sign in interactively (device code), the module
+        enumerates the tenants you can access and — if there is more than
+        one — prompts you to pick one.
 
     .PARAMETER ClientId
         Required for ServicePrincipal. For UserDelegated, defaults to the
@@ -31,10 +34,15 @@ function Connect-FDAObservability {
         Optional. For user-assigned managed identity, the client id to use.
 
     .PARAMETER WorkspaceId
-        Fabric workspace id where the FDAObs database lives.
+        Fabric workspace id where the FDAObs database lives. Optional — when
+        omitted, the module lists the workspaces you can access and prompts
+        you to select one or create a new workspace.
 
     .PARAMETER EventhouseId
         Fabric Eventhouse item id. Endpoints are resolved via Fabric REST.
+        Optional — when omitted, the module lists the Eventhouses in the
+        selected workspace and prompts you to select one or create a new
+        Eventhouse.
 
     .PARAMETER DatabaseName
         KQL database name. Defaults to 'FDAObs'.
@@ -47,6 +55,10 @@ function Connect-FDAObservability {
     .EXAMPLE
         Connect-FDAObservability -AuthMethod ManagedIdentity `
             -WorkspaceId 'w...' -EventhouseId 'e...'
+
+    .EXAMPLE
+        # Fully interactive: sign in, pick (or create) tenant / workspace / Eventhouse.
+        Connect-FDAObservability -AuthMethod UserDelegated
 
     .EXAMPLE
         Connect-FDAObservability -AuthMethod UserDelegated `
@@ -75,10 +87,8 @@ function Connect-FDAObservability {
         [Parameter(ParameterSetName = 'ManagedIdentity')]
         [string] $ManagedIdentityClientId,
 
-        [Parameter(Mandatory)]
         [string] $WorkspaceId,
 
-        [Parameter(Mandatory)]
         [string] $EventhouseId,
 
         [string] $DatabaseName = 'FDAObs'
@@ -159,14 +169,16 @@ function Connect-FDAObservability {
             $script:FDAState.TokenProviders['*'] = $provider
         }
         'UserDelegated' {
-            if (-not $TenantId) { throw 'UserDelegated requires -TenantId.' }
             # Default to the Power BI / Azure PowerShell well-known public client
             # if no ClientId was supplied. Device code flow.
             if (-not $ClientId) { $ClientId = '1950a258-227b-4e31-a9cf-717495945fc8' }
-            $tenant = $TenantId
             $cid = $ClientId
             $provider = {
                 param($Scope)
+                # Resolve the authority at call time: a specific tenant once one
+                # has been selected, else 'organizations' so sign-in can proceed
+                # before the tenant is known.
+                $tenant = if ($script:FDAState.TenantId) { $script:FDAState.TenantId } else { 'organizations' }
                 $deviceUrl = "https://login.microsoftonline.com/$tenant/oauth2/v2.0/devicecode"
                 $form = @{ client_id = $cid; scope = $Scope }
                 $dc = Invoke-RestMethod -Method Post -Uri $deviceUrl -Body $form -ErrorAction Stop
@@ -207,6 +219,36 @@ function Connect-FDAObservability {
 
     $script:FDAState.Connected = $true
 
+    # ---------------------------------------------------------------------
+    # Resolve tenant / workspace / Eventhouse. Anything not supplied as a
+    # parameter is selected interactively (this is where the device-code
+    # sign-in happens for UserDelegated).
+    # ---------------------------------------------------------------------
+
+    # Tenant: only UserDelegated can discover/select interactively. SP uses
+    # the supplied -TenantId; ManagedIdentity takes it from IMDS.
+    if (-not $script:FDAState.TenantId -and $AuthMethod -eq 'UserDelegated') {
+        Write-Verbose 'No TenantId supplied; signing in to resolve tenant...'
+        $resolvedTenant = Resolve-FDATenant
+        $script:FDAState.TenantId = $resolvedTenant
+        # Drop any tokens acquired against the 'organizations' authority so
+        # subsequent calls are issued against the selected tenant.
+        $script:FDAState.TokenCache = @{}
+        Write-Host "Using tenant: $resolvedTenant" -ForegroundColor Green
+    }
+
+    # Workspace.
+    if (-not $WorkspaceId) {
+        $WorkspaceId = Resolve-FDAWorkspace
+    }
+    $script:FDAState.WorkspaceId = $WorkspaceId
+
+    # Eventhouse.
+    if (-not $EventhouseId) {
+        $EventhouseId = Resolve-FDAEventhouse -WorkspaceId $WorkspaceId
+    }
+    $script:FDAState.EventhouseId = $EventhouseId
+
     # Resolve Eventhouse endpoints.
     $endpoints = Get-FDAEventhouseEndpoint -WorkspaceId $WorkspaceId -EventhouseId $EventhouseId
     $script:FDAState.EventhouseClusterUri = $endpoints.QueryServiceUri
@@ -241,6 +283,7 @@ function New-FDAClientAssertion {
         Build a signed JWT client assertion for cert-based SP auth.
     #>
     [CmdletBinding()]
+    [OutputType([string])]
     param(
         [Parameter(Mandatory)] [string] $ClientId,
         [Parameter(Mandatory)] [string] $TenantId,
