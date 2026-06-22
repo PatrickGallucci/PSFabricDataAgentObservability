@@ -15,10 +15,10 @@ function Connect-FDAObservability {
 
     .PARAMETER TenantId
         Required for ServicePrincipal. Optional for ManagedIdentity (taken
-        from IMDS metadata) and UserDelegated. When omitted for
-        UserDelegated, you sign in interactively (device code), the module
-        enumerates the tenants you can access and — if there is more than
-        one — prompts you to pick one.
+        from IMDS metadata) and UserDelegated. When omitted for UserDelegated
+        you are prompted for a tenant ID (GUID) or verified domain
+        (e.g. contoso.onmicrosoft.com) to sign in to — the device-code flow
+        needs a concrete tenant, so it cannot be discovered after sign-in.
 
     .PARAMETER ClientId
         Required for ServicePrincipal. For UserDelegated, defaults to the
@@ -175,10 +175,14 @@ function Connect-FDAObservability {
             $cid = $ClientId
             $provider = {
                 param($Scope)
-                # Resolve the authority at call time: a specific tenant once one
-                # has been selected, else 'organizations' so sign-in can proceed
-                # before the tenant is known.
-                $tenant = if ($script:FDAState.TenantId) { $script:FDAState.TenantId } else { 'organizations' }
+                # The raw device-code endpoint needs a concrete tenant: the
+                # tenant-less 'organizations'/'common' authorities are rejected
+                # with AADSTS50059. Connect-FDAObservability resolves a tenant
+                # (parameter or interactive prompt) before any token is fetched.
+                $tenant = $script:FDAState.TenantId
+                if (-not $tenant) {
+                    throw 'UserDelegated sign-in requires a tenant. Pass -TenantId, or supply a tenant ID/domain when prompted.'
+                }
                 $deviceUrl = "https://login.microsoftonline.com/$tenant/oauth2/v2.0/devicecode"
                 $form = @{ client_id = $cid; scope = $Scope }
                 $dc = Invoke-RestMethod -Method Post -Uri $deviceUrl -Body $form -ErrorAction Stop
@@ -225,16 +229,12 @@ function Connect-FDAObservability {
     # sign-in happens for UserDelegated).
     # ---------------------------------------------------------------------
 
-    # Tenant: only UserDelegated can discover/select interactively. SP uses
-    # the supplied -TenantId; ManagedIdentity takes it from IMDS.
+    # Tenant: only UserDelegated needs an interactive prompt. SP uses the
+    # supplied -TenantId; ManagedIdentity takes it from IMDS. The device-code
+    # flow can't bootstrap without a concrete tenant, so ask for one up front.
     if (-not $script:FDAState.TenantId -and $AuthMethod -eq 'UserDelegated') {
-        Write-Verbose 'No TenantId supplied; signing in to resolve tenant...'
-        $resolvedTenant = Resolve-FDATenant
-        $script:FDAState.TenantId = $resolvedTenant
-        # Drop any tokens acquired against the 'organizations' authority so
-        # subsequent calls are issued against the selected tenant.
-        $script:FDAState.TokenCache = @{}
-        Write-Host "Using tenant: $resolvedTenant" -ForegroundColor Green
+        $script:FDAState.TenantId = Resolve-FDATenant
+        Write-Host "Signing in to tenant: $($script:FDAState.TenantId)" -ForegroundColor Green
     }
 
     # Workspace.

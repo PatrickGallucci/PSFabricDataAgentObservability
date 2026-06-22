@@ -26,88 +26,34 @@ function Read-FDASelection {
     }
 }
 
-function Get-FDATokenTenantId {
-    <#
-    .SYNOPSIS
-        Best-effort: read the 'tid' (tenant) claim out of a Fabric access token.
-        Used as a fallback when ARM tenant enumeration is unavailable.
-    #>
-    [CmdletBinding()]
-    param()
-    try {
-        $token = Get-FDAAccessToken -Scope 'https://api.fabric.microsoft.com/.default'
-        $parts = $token.Split('.')
-        if ($parts.Count -lt 2) { return $null }
-        $payload = $parts[1].Replace('-', '+').Replace('_', '/')
-        switch ($payload.Length % 4) {
-            2 { $payload += '==' }
-            3 { $payload += '=' }
-        }
-        $json = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($payload))
-        $claims = $json | ConvertFrom-Json
-        if ($claims.PSObject.Properties.Name -contains 'tid') { return $claims.tid }
-        return $null
-    } catch {
-        Write-Verbose "Could not decode tenant from token: $($_.Exception.Message)"
-        return $null
-    }
-}
-
 function Resolve-FDATenant {
     <#
     .SYNOPSIS
-        Determine which tenant to operate against after an interactive sign-in.
+        Prompt for the Entra tenant to sign in to and return it.
     .DESCRIPTION
-        Enumerates the tenants the signed-in user can access via Azure Resource
-        Manager. If exactly one is found it is used automatically; if several
-        are found the user is prompted to pick one. If ARM is inaccessible
-        (e.g. the user has no Azure RBAC), falls back to the tenant ('tid')
-        claim on a Fabric token.
+        The device-code flow used by UserDelegated auth must target a concrete
+        tenant: the raw v2.0 /devicecode endpoint rejects the tenant-less
+        'organizations' and 'common' authorities with AADSTS50059 ("No
+        tenant-identifying information found"). Tenant discovery therefore can't
+        happen before sign-in (it would itself need a token), so when no tenant
+        was supplied we ask for one here.
+
+        Accepts either a tenant ID (GUID) or a verified domain
+        (e.g. contoso.onmicrosoft.com) — both are valid sign-in authorities.
     #>
     [CmdletBinding()]
     param()
 
-    $tenants = @()
-    try {
-        $armToken = Get-FDAAccessToken -Scope 'https://management.azure.com/.default'
-        $resp = Invoke-RestMethod -Method Get `
-            -Uri 'https://management.azure.com/tenants?api-version=2020-01-01' `
-            -Headers @{ Authorization = "Bearer $armToken" } -ErrorAction Stop
-        if (($resp.PSObject.Properties.Name -contains 'value') -and $resp.value) {
-            $tenants = @($resp.value)
-        }
-    } catch {
-        Write-Verbose "ARM tenant enumeration unavailable: $($_.Exception.Message)"
-    }
-
-    if ($tenants.Count -eq 0) {
-        $tid = Get-FDATokenTenantId
-        if ($tid) {
-            Write-Verbose "Falling back to token tenant claim: $tid"
-            return $tid
-        }
-        throw 'Unable to determine a tenant automatically. Re-run with -TenantId.'
-    }
-
-    if ($tenants.Count -eq 1) {
-        return $tenants[0].tenantId
-    }
-
     Write-Host ''
-    Write-Host 'You have access to multiple tenants:' -ForegroundColor Yellow
-    for ($i = 0; $i -lt $tenants.Count; $i++) {
-        $t = $tenants[$i]
-        $name = if ($t.PSObject.Properties.Name -contains 'displayName' -and $t.displayName) {
-            $t.displayName
-        } elseif ($t.PSObject.Properties.Name -contains 'defaultDomain' -and $t.defaultDomain) {
-            $t.defaultDomain
-        } else {
-            '(unnamed)'
-        }
-        Write-Host ('  [{0}] {1}  ({2})' -f ($i + 1), $name, $t.tenantId)
+    Write-Host 'No tenant was specified. Enter the tenant to sign in to:' -ForegroundColor Yellow
+    Write-Host '  - a tenant ID (GUID), or' -ForegroundColor Yellow
+    Write-Host '  - a verified domain, e.g. contoso.onmicrosoft.com' -ForegroundColor Yellow
+
+    $tenant = ''
+    while (-not $tenant) {
+        $tenant = (Read-Host 'Tenant ID or domain').Trim()
     }
-    $sel = Read-FDASelection -Max $tenants.Count -Prompt 'Select tenant number'
-    return $tenants[$sel - 1].tenantId
+    return $tenant
 }
 
 function Resolve-FDAWorkspace {

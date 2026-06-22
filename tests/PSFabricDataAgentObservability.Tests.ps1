@@ -138,6 +138,18 @@ Describe 'Get-FDAAuthEvent contract' {
     }
 }
 
+Describe 'Interactive tenant resolution' {
+    It 'returns the tenant ID/domain entered at the prompt (no organizations fallback)' {
+        $r = & (Get-Module PSFabricDataAgentObservability) {
+            # Shadow the interactive cmdlets within the module scope.
+            function Read-Host { param($Prompt) 'contoso.onmicrosoft.com' }
+            function Write-Host { param([Parameter(ValueFromRemainingArguments)]$x) }
+            Resolve-FDATenant
+        }
+        $r | Should -Be 'contoso.onmicrosoft.com'
+    }
+}
+
 Describe 'Public function parameter contracts' {
     It 'Invoke-FDAQuery requires AgentEndpoint and Question' {
         $p = (Get-Command Invoke-FDAQuery).Parameters

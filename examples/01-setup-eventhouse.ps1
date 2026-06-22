@@ -5,7 +5,9 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)] [string] $TenantId,
+    # Optional for UserDelegated/ManagedIdentity — omit to be prompted (or to
+    # use IMDS). Required for ServicePrincipal.
+    [string] $TenantId,
     [Parameter(Mandatory)] [string] $WorkspaceId,
     [string] $EventhouseId,
     [string] $EventhouseName = 'FDAObservability',
@@ -20,11 +22,13 @@ Import-Module (Join-Path -Path $PSScriptRoot -ChildPath '..' -AdditionalChildPat
 
 $connectArgs = @{
     AuthMethod   = $AuthMethod
-    TenantId     = $TenantId
     WorkspaceId  = $WorkspaceId
     EventhouseId = ($EventhouseId ?? '00000000-0000-0000-0000-000000000000')
     DatabaseName = $DatabaseName
 }
+# Only pass TenantId when supplied — an empty value would otherwise reach the
+# auth flow. Omitting it lets UserDelegated prompt and ManagedIdentity use IMDS.
+if ($TenantId) { $connectArgs.TenantId = $TenantId }
 if ($AuthMethod -eq 'ServicePrincipal') {
     $connectArgs.ClientId     = $ClientId
     $connectArgs.ClientSecret = $ClientSecret

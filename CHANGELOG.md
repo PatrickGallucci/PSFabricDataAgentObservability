@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-06-22
+
+### Fixed
+
+- **Interactive UserDelegated sign-in failed with `AADSTS50059` ("No tenant-identifying information found").** The raw v2.0 device-code endpoint rejects the tenant-less `organizations`/`common` authorities, so the 1.1.0 "discover the tenant after sign-in" approach could never bootstrap. When `-TenantId` is omitted for UserDelegated you are now prompted for a tenant ID (GUID) or verified domain (e.g. `contoso.onmicrosoft.com`) — both valid sign-in authorities — before the device-code flow starts. The token provider now raises a clear error instead of falling back to the unusable `organizations` authority.
+- `examples/01-setup-eventhouse.ps1` no longer forwards an empty `-TenantId` (e.g. from an unset `$ENV:AZURE_TENANT_ID`) into the auth flow; `TenantId` is optional and only passed when supplied.
+
+### Changed
+
+- Removed the pre-sign-in Azure Resource Manager tenant enumeration (incompatible with the raw device-code flow). Multi-tenant users specify the target tenant at the prompt (or via `-TenantId`).
+
 ## [1.1.0] - 2026-06-21
 
 ### Added
