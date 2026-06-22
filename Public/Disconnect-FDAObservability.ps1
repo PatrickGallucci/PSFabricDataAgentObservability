@@ -9,6 +9,7 @@ function Disconnect-FDAObservability {
     try { Stop-FDAFlushTimer } catch { Write-Verbose "Stop-FDAFlushTimer during disconnect: $($_.Exception.Message)" }
     $script:FDAState.TokenCache = @{}
     $script:FDAState.TokenProviders = @{}
+    $script:FDAState.RefreshToken = $null
     $script:FDAState.Connected = $false
     $script:FDAState.AuthMethod = $null
     $script:FDAState.EventhouseClusterUri = $null

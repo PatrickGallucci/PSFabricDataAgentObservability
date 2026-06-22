@@ -140,13 +140,36 @@ Describe 'Get-FDAAuthEvent contract' {
 
 Describe 'Interactive tenant resolution' {
     It 'returns the tenant ID/domain entered at the prompt (no organizations fallback)' {
-        $r = & (Get-Module PSFabricDataAgentObservability) {
-            # Shadow the interactive cmdlets within the module scope.
-            function Read-Host { param($Prompt) 'contoso.onmicrosoft.com' }
-            function Write-Host { param([Parameter(ValueFromRemainingArguments)]$x) }
-            Resolve-FDATenant
-        }
+        Mock -ModuleName PSFabricDataAgentObservability Read-Host { 'contoso.onmicrosoft.com' }
+        Mock -ModuleName PSFabricDataAgentObservability Write-Host { }
+        $r = InModuleScope PSFabricDataAgentObservability { Resolve-FDATenant }
         $r | Should -Be 'contoso.onmicrosoft.com'
+    }
+}
+
+Describe 'User-delegated refresh-token reuse' {
+    It 'redeems the stored refresh token silently (no device code) and rotates it' {
+        Mock -ModuleName PSFabricDataAgentObservability Invoke-RestMethod {
+            if ($Uri -like '*devicecode*') { throw 'device-code endpoint must not be called when a refresh token exists' }
+            [pscustomobject]@{ access_token = 'at-new'; expires_in = 3600; refresh_token = 'rt-rotated' }
+        }
+        $result = InModuleScope PSFabricDataAgentObservability {
+            $script:FDAState.TenantId     = 'contoso.onmicrosoft.com'
+            $script:FDAState.RefreshToken = 'rt-initial'
+            try {
+                $tok = Get-FDAUserDelegatedToken -ClientId 'cid' -Scope 'https://api.fabric.microsoft.com/.default'
+                [pscustomobject]@{ Token = $tok.Token; Rotated = $script:FDAState.RefreshToken }
+            } finally {
+                $script:FDAState.RefreshToken = $null
+                $script:FDAState.TenantId     = $null
+            }
+        }
+        $result.Token   | Should -Be 'at-new'
+        $result.Rotated | Should -Be 'rt-rotated'
+        Should -Invoke -ModuleName PSFabricDataAgentObservability Invoke-RestMethod -Exactly -Times 1 `
+            -ParameterFilter { $Body.grant_type -eq 'refresh_token' }
+        Should -Invoke -ModuleName PSFabricDataAgentObservability Invoke-RestMethod -Exactly -Times 0 `
+            -ParameterFilter { $Uri -like '*devicecode*' }
     }
 }
 

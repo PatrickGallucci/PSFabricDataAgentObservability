@@ -10,6 +10,10 @@ function Connect-FDAObservability {
         Three auth methods supported. The caller picks which one their
         environment uses; the module behaves the same after connect.
 
+        For UserDelegated, the device-code sign-in requests offline_access and
+        the resulting refresh token is reused across scopes, so a single
+        interactive sign-in covers Fabric, Kusto, ARM and Power BI.
+
     .PARAMETER AuthMethod
         ServicePrincipal | ManagedIdentity | UserDelegated
 
@@ -170,52 +174,15 @@ function Connect-FDAObservability {
         }
         'UserDelegated' {
             # Default to the Power BI / Azure PowerShell well-known public client
-            # if no ClientId was supplied. Device code flow.
+            # if no ClientId was supplied. Device-code flow on first use, then
+            # silent refresh-token reuse across scopes (see Get-FDAUserDelegatedToken).
             if (-not $ClientId) { $ClientId = '1950a258-227b-4e31-a9cf-717495945fc8' }
             $cid = $ClientId
+            # New sign-in: drop any refresh token from a previous connection.
+            $script:FDAState.RefreshToken = $null
             $provider = {
                 param($Scope)
-                # The raw device-code endpoint needs a concrete tenant: the
-                # tenant-less 'organizations'/'common' authorities are rejected
-                # with AADSTS50059. Connect-FDAObservability resolves a tenant
-                # (parameter or interactive prompt) before any token is fetched.
-                $tenant = $script:FDAState.TenantId
-                if (-not $tenant) {
-                    throw 'UserDelegated sign-in requires a tenant. Pass -TenantId, or supply a tenant ID/domain when prompted.'
-                }
-                $deviceUrl = "https://login.microsoftonline.com/$tenant/oauth2/v2.0/devicecode"
-                $form = @{ client_id = $cid; scope = $Scope }
-                $dc = Invoke-RestMethod -Method Post -Uri $deviceUrl -Body $form -ErrorAction Stop
-                Write-Host ''
-                Write-Host '====================================================================='
-                Write-Host 'Open a browser to:' -ForegroundColor Yellow
-                Write-Host "    $($dc.verification_uri)" -ForegroundColor Cyan
-                Write-Host 'And enter code:' -ForegroundColor Yellow
-                Write-Host "    $($dc.user_code)" -ForegroundColor Cyan
-                Write-Host '====================================================================='
-                Write-Host ''
-                $tokenUrl = "https://login.microsoftonline.com/$tenant/oauth2/v2.0/token"
-                $deadline = (Get-Date).AddSeconds([int]$dc.expires_in)
-                while ((Get-Date) -lt $deadline) {
-                    Start-Sleep -Seconds ([int]$dc.interval)
-                    $tokenForm = @{
-                        client_id   = $cid
-                        grant_type  = 'urn:ietf:params:oauth:grant-type:device_code'
-                        device_code = $dc.device_code
-                    }
-                    try {
-                        $resp = Invoke-RestMethod -Method Post -Uri $tokenUrl -Body $tokenForm -ErrorAction Stop
-                        return [pscustomobject]@{
-                            Token     = $resp.access_token
-                            ExpiresOn = (Get-Date).AddSeconds([int]$resp.expires_in)
-                        }
-                    } catch {
-                        $err = $_.ErrorDetails.Message | ConvertFrom-Json -ErrorAction SilentlyContinue
-                        if ($err -and $err.error -eq 'authorization_pending') { continue }
-                        throw
-                    }
-                }
-                throw 'Device code flow timed out before user completed sign-in.'
+                Get-FDAUserDelegatedToken -ClientId $cid -Scope $Scope
             }.GetNewClosure()
             $script:FDAState.TokenProviders['*'] = $provider
         }

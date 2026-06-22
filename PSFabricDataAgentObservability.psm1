@@ -16,6 +16,7 @@ $script:FDAState = [pscustomobject]@{
     AuthMethod          = $null            # 'ServicePrincipal' | 'ManagedIdentity' | 'UserDelegated'
     TokenProviders      = @{}              # scope -> [scriptblock] returning a fresh AccessToken
     TokenCache          = @{}              # scope -> @{ Token = '...'; ExpiresOn = [datetime] }
+    RefreshToken        = $null            # user-delegated refresh token; one sign-in covers all scopes
     TenantId            = $null
     WorkspaceId         = $null
     EventhouseId        = $null

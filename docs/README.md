@@ -77,7 +77,7 @@ Connect-FDAObservability -AuthMethod UserDelegated `
     -TenantId $tid -WorkspaceId $ws -EventhouseId $eh
 ```
 
-Tokens are cached and refreshed transparently. Cert-based SP auth is supported via `-Certificate`.
+Tokens are cached and refreshed transparently. Cert-based SP auth is supported via `-Certificate`. For **UserDelegated**, the device-code flow requests `offline_access`, so a **single interactive sign-in covers every scope** (Fabric, Kusto, ARM, Power BI) — the cached refresh token is redeemed silently for each new resource instead of prompting again.
 
 ## Logging levels — built-in + dynamic custom
 

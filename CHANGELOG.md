@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-06-22
+
+### Added
+
+- **Single interactive sign-in covers every scope.** The UserDelegated device-code flow now requests `offline_access` and caches the returned refresh token in module state. Subsequent scopes (Kusto, ARM, Power BI, M365 audit) are obtained silently via the refresh-token grant instead of prompting for a new device code each time. The refresh token rotates on each use and is cleared by `Disconnect-FDAObservability`. Token acquisition is factored into a new private `Get-FDAUserDelegatedToken` helper.
+
+### Changed
+
+- `Connect-FDAObservability` resets any prior refresh token at the start of a new UserDelegated connection.
+
 ## [1.1.1] - 2026-06-22
 
 ### Fixed

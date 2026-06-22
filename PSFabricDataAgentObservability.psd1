@@ -1,6 +1,6 @@
 @{
     RootModule           = 'PSFabricDataAgentObservability.psm1'
-    ModuleVersion        = '1.1.1'
+    ModuleVersion        = '1.2.0'
     GUID                 = 'c3fc66d1-7bc4-46c3-828f-85333a64697b'
     Author               = 'Patrick Gallucci'
     CompanyName          = 'Microsoft'
@@ -38,7 +38,7 @@
             Tags         = @('Fabric', 'PowerBI', 'DataAgent', 'NL2DAX', 'Observability', 'Logging', 'Eventhouse', 'KQL', 'Telemetry', 'Microsoft365')
             ProjectUri   = 'https://github.com/PatrickGallucci/PSFabricDataAgentObservability'
             LicenseUri   = 'https://github.com/PatrickGallucci/PSFabricDataAgentObservability/blob/main/LICENSE'
-            ReleaseNotes = '1.1.1: Fixes AADSTS50059 in the interactive UserDelegated flow — the raw device-code endpoint requires a concrete tenant, so when -TenantId is omitted you are now prompted for a tenant ID or domain instead of failing against the tenant-less authority. 1.1.0: Interactive connect & provisioning — Connect/Initialize no longer require TenantId/WorkspaceId/EventhouseId; select or create the Fabric workspace/Eventhouse from a menu. Fully backward compatible. See CHANGELOG.md.'
+            ReleaseNotes = '1.2.0: UserDelegated device-code sign-in now requests offline_access and reuses the resulting refresh token across scopes, so a single interactive sign-in covers Fabric, Kusto, ARM and Power BI instead of prompting per scope. 1.1.1: Fixes AADSTS50059 — prompts for a tenant ID/domain when -TenantId is omitted. 1.1.0: Interactive connect & provisioning — Connect/Initialize no longer require TenantId/WorkspaceId/EventhouseId; select or create the Fabric workspace/Eventhouse from a menu. Fully backward compatible. See CHANGELOG.md.'
         }
     }
 }
