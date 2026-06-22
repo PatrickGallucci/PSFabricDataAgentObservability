@@ -17,6 +17,13 @@ $script:FDAState = [pscustomobject]@{
     TokenProviders      = @{}              # scope -> [scriptblock] returning a fresh AccessToken
     TokenCache          = @{}              # scope -> @{ Token = '...'; ExpiresOn = [datetime] }
     RefreshToken        = $null            # user-delegated refresh token; one sign-in covers all scopes
+    # Auth configuration read by the token-provider helpers. Held in module
+    # state (not captured in closures) so providers stay module-affiliated and
+    # can resolve module-private helper functions.
+    ClientId                = $null        # SP app id / UserDelegated public client id
+    ClientSecret            = $null        # SP secret (securestring)
+    Certificate             = $null        # SP cert (X509Certificate2)
+    ManagedIdentityClientId = $null        # user-assigned MI client id (optional)
     TenantId            = $null
     WorkspaceId         = $null
     EventhouseId        = $null

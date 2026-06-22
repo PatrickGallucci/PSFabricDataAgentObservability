@@ -10,6 +10,8 @@ function Disconnect-FDAObservability {
     $script:FDAState.TokenCache = @{}
     $script:FDAState.TokenProviders = @{}
     $script:FDAState.RefreshToken = $null
+    $script:FDAState.ClientSecret = $null
+    $script:FDAState.Certificate = $null
     $script:FDAState.Connected = $false
     $script:FDAState.AuthMethod = $null
     $script:FDAState.EventhouseClusterUri = $null

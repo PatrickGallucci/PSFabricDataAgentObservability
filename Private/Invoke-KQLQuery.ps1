@@ -51,7 +51,7 @@ function Invoke-KQLQuery {
             $resp = Invoke-RestMethod -Method Post -Uri $url -Headers $headers -Body $body -ErrorAction Stop
             break
         } catch {
-            $sc = $_.Exception.Response.StatusCode.value__
+            $sc = Get-FDAHttpStatusCode -ErrorRecord $_
             $isTransient = ($sc -in 408, 429, 500, 502, 503, 504) -or
                            ($_.Exception -is [System.Net.WebException])
             if ($attempt -ge $MaxRetries -or -not $isTransient) {
@@ -70,7 +70,8 @@ function Invoke-KQLQuery {
     if (-not $primary -or -not $primary.Rows) {
         return @()
     }
-    $cols = $primary.Columns | ForEach-Object { $_.ColumnName }
+    # Force array so .Count is safe for single-column results (e.g. "... | count").
+    $cols = @($primary.Columns | ForEach-Object { $_.ColumnName })
     $out = foreach ($row in $primary.Rows) {
         $ht = [ordered]@{}
         for ($i = 0; $i -lt $cols.Count; $i++) {

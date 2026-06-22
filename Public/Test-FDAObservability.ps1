@@ -57,7 +57,7 @@ function Test-FDAObservability {
     try {
         $rows = Invoke-KQLQuery -Query '.show tables | project TableName'
         $found = @($rows | ForEach-Object { $_.TableName })
-        $missing = $expectedTables | Where-Object { $_ -notin $found }
+        $missing = @($expectedTables | Where-Object { $_ -notin $found })
         if ($missing.Count -eq 0) {
             Add-Result 'Schema' 'Pass' 'All curated, raw, and operational tables present.'
         } else {
@@ -95,8 +95,8 @@ function Test-FDAObservability {
     }
 
     # 7. Spool drain status
-    $spool = Get-ChildItem -Path $script:FDAState.SpoolPath -Filter '*.spool.json' -ErrorAction SilentlyContinue
-    if (-not $spool -or $spool.Count -eq 0) {
+    $spool = @(Get-ChildItem -Path $script:FDAState.SpoolPath -Filter '*.spool.json' -ErrorAction SilentlyContinue)
+    if ($spool.Count -eq 0) {
         Add-Result 'Spool empty' 'Pass' 'No spooled events awaiting drain.'
     } else {
         Add-Result 'Spool empty' 'Warning' ('{0} spooled file(s); will drain on next ingest.' -f $spool.Count)

@@ -81,7 +81,7 @@ function New-FDAReportMarkdown {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)] [string] $Type,
-        [Parameter(Mandatory)] [object[]] $Rows
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]] $Rows
     )
     $title = switch ($Type) {
         'DailyOps'       { 'Daily Ops Snapshot' }

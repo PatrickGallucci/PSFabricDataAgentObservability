@@ -104,7 +104,16 @@ function Connect-FDAObservability {
     $script:FDAState.EventhouseId = $EventhouseId
     $script:FDAState.DatabaseName = $DatabaseName
 
-    # Install token-provider closures keyed by scope. '*' is the fallback.
+    # Install the token provider keyed by scope ('*' is the fallback). The
+    # providers are PLAIN scriptblocks (NOT .GetNewClosure()): a closure is
+    # rebound to a new dynamic module and can no longer resolve this module's
+    # private helper functions (Get-FDA*Token / New-FDAClientAssertion). Plain
+    # module-affiliated blocks keep that access, so all per-connection config is
+    # stashed in $script:FDAState and read by the helpers at call time.
+    $script:FDAState.ClientId = $null
+    $script:FDAState.ClientSecret = $null
+    $script:FDAState.Certificate = $null
+    $script:FDAState.ManagedIdentityClientId = $null
     switch ($AuthMethod) {
         'ServicePrincipal' {
             if (-not $TenantId -or -not $ClientId) {
@@ -113,78 +122,24 @@ function Connect-FDAObservability {
             if (-not $ClientSecret -and -not $Certificate) {
                 throw 'ServicePrincipal requires either -ClientSecret or -Certificate.'
             }
-            $tenant = $TenantId
-            $cid = $ClientId
-            $sec = $ClientSecret
-            $cert = $Certificate
-            $provider = {
-                param($Scope)
-                $tokenUrl = "https://login.microsoftonline.com/$tenant/oauth2/v2.0/token"
-                $form = @{
-                    client_id  = $cid
-                    grant_type = 'client_credentials'
-                    scope      = $Scope
-                }
-                if ($cert) {
-                    # Client assertion (cert) flow.
-                    $jwt = New-FDAClientAssertion -ClientId $cid -TenantId $tenant -Certificate $cert
-                    $form['client_assertion_type'] = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
-                    $form['client_assertion'] = $jwt
-                } else {
-                    $plain = [System.Net.NetworkCredential]::new('', $sec).Password
-                    $form['client_secret'] = $plain
-                }
-                $resp = Invoke-RestMethod -Method Post -Uri $tokenUrl -Body $form -ErrorAction Stop
-                [pscustomobject]@{
-                    Token     = $resp.access_token
-                    ExpiresOn = (Get-Date).AddSeconds([int]$resp.expires_in)
-                }
-            }.GetNewClosure()
-            $script:FDAState.TokenProviders['*'] = $provider
+            $script:FDAState.ClientId = $ClientId
+            $script:FDAState.ClientSecret = $ClientSecret
+            $script:FDAState.Certificate = $Certificate
+            $script:FDAState.TokenProviders['*'] = { param($Scope) Get-FDAServicePrincipalToken -Scope $Scope }
         }
         'ManagedIdentity' {
-            $miCid = $ManagedIdentityClientId
-            $provider = {
-                param($Scope)
-                # IMDS endpoint. resource = scope-without-/.default suffix.
-                $resource = $Scope -replace '/\.default$', ''
-                $imds = 'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource={0}' -f [uri]::EscapeDataString($resource)
-                if ($miCid) {
-                    $imds += '&client_id=' + [uri]::EscapeDataString($miCid)
-                }
-                $headers = @{ Metadata = 'true' }
-                # Azure Arc / App Service variants would use env-supplied endpoints. Detect:
-                if ($env:IDENTITY_ENDPOINT -and $env:IDENTITY_HEADER) {
-                    $imds = '{0}?resource={1}&api-version=2019-08-01' -f $env:IDENTITY_ENDPOINT, [uri]::EscapeDataString($resource)
-                    if ($miCid) { $imds += '&client_id=' + [uri]::EscapeDataString($miCid) }
-                    $headers = @{ 'X-IDENTITY-HEADER' = $env:IDENTITY_HEADER }
-                }
-                $resp = Invoke-RestMethod -Method Get -Uri $imds -Headers $headers -ErrorAction Stop
-                $expires = if ($resp.expires_on) {
-                    [DateTimeOffset]::FromUnixTimeSeconds([long]$resp.expires_on).LocalDateTime
-                } else {
-                    (Get-Date).AddSeconds([int]$resp.expires_in)
-                }
-                [pscustomobject]@{
-                    Token     = $resp.access_token
-                    ExpiresOn = $expires
-                }
-            }.GetNewClosure()
-            $script:FDAState.TokenProviders['*'] = $provider
+            $script:FDAState.ManagedIdentityClientId = $ManagedIdentityClientId
+            $script:FDAState.TokenProviders['*'] = { param($Scope) Get-FDAManagedIdentityToken -Scope $Scope }
         }
         'UserDelegated' {
             # Default to the Power BI / Azure PowerShell well-known public client
             # if no ClientId was supplied. Device-code flow on first use, then
             # silent refresh-token reuse across scopes (see Get-FDAUserDelegatedToken).
             if (-not $ClientId) { $ClientId = '1950a258-227b-4e31-a9cf-717495945fc8' }
-            $cid = $ClientId
+            $script:FDAState.ClientId = $ClientId
             # New sign-in: drop any refresh token from a previous connection.
             $script:FDAState.RefreshToken = $null
-            $provider = {
-                param($Scope)
-                Get-FDAUserDelegatedToken -ClientId $cid -Scope $Scope
-            }.GetNewClosure()
-            $script:FDAState.TokenProviders['*'] = $provider
+            $script:FDAState.TokenProviders['*'] = { param($Scope) Get-FDAUserDelegatedToken -ClientId $script:FDAState.ClientId -Scope $Scope }
         }
     }
 
@@ -278,7 +233,10 @@ function New-FDAClientAssertion {
     $headerB64 = _b64url $header
     $payloadB64 = _b64url $payload
     $signingInput = "$headerB64.$payloadB64"
-    $rsa = $Certificate.GetRSAPrivateKey()
+    # GetRSAPrivateKey is a C# extension method (RSACertificateExtensions);
+    # PowerShell does not surface it as an instance method, so call the static
+    # form — $Certificate.GetRSAPrivateKey() throws "method not found".
+    $rsa = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($Certificate)
     if (-not $rsa) { throw 'Certificate does not expose an RSA private key.' }
     $signature = $rsa.SignData([Text.Encoding]::UTF8.GetBytes($signingInput), [Security.Cryptography.HashAlgorithmName]::SHA256, [Security.Cryptography.RSASignaturePadding]::Pkcs1)
     $sigB64 = _b64url_bytes $signature

@@ -7,5 +7,9 @@
         "~/.copilot/skills": true,
         "~/.claude/skills": true,
         "~/.vscode/extensions/synapsevscode.synapse-1.25.0/copilot/skills": true
-    }
+    },
+    "claudeCode.allowDangerouslySkipPermissions": true,
+    "claudeCode.initialPermissionMode": "acceptEdits",
+    "github.copilot.chat.claudeAgent.allowDangerouslySkipPermissions": true,
+    "github.copilot.chat.claudeAgent.allowAutoPermissions": true
 }

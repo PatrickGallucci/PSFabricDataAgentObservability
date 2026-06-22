@@ -49,7 +49,8 @@ function Invoke-EventhouseIngest {
             $resp = Invoke-RestMethod -Method Post -Uri $url -Headers $headers -Body $body -ErrorAction Stop
             return $resp
         } catch {
-            $isTransient = ($_.Exception.Response.StatusCode.value__ -in 408, 429, 500, 502, 503, 504) -or
+            $sc = Get-FDAHttpStatusCode -ErrorRecord $_
+            $isTransient = ($sc -in 408, 429, 500, 502, 503, 504) -or
                            ($_.Exception -is [System.Net.WebException]) -or
                            ($_.Exception.Message -match 'transient|timeout|temporarily')
             if ($attempt -ge $MaxRetries -or -not $isTransient) {

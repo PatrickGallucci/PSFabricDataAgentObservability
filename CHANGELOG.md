@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-06-22
+
+### Fixed
+
+- **Fatal `The term 'Get-FDAUserDelegatedToken' is not recognized` on interactive connect.** The token providers were installed with `.GetNewClosure()`, which rebinds a scriptblock to a new dynamic module and severs access to the defining module's private functions. Providers are now plain, module-affiliated scriptblocks that read per-connection auth config (client id, secret, certificate, MI client id) from module state, so they resolve `Get-FDAUserDelegatedToken` / `Get-FDAServicePrincipalToken` / `Get-FDAManagedIdentityToken` / `New-FDAClientAssertion` correctly. This also fixes the same latent break in the **certificate-based Service Principal** path.
+- **Certificate-based Service Principal auth could not sign.** `New-FDAClientAssertion` called `$Certificate.GetRSAPrivateKey()`, but that is a C# extension method PowerShell does not expose as an instance method (it threw "method not found"). It now calls the static `RSACertificateExtensions::GetRSAPrivateKey` form.
+- **`Set-StrictMode -Version Latest` crashes on several edge cases** surfaced by the new test suite:
+  - `Invoke-KQLQuery` threw on single-column results (e.g. `… | count`) because `$cols.Count` was read on a scalar — now array-coerced.
+  - `Invoke-KQLQuery` / `Invoke-EventhouseIngest` threw inside their retry handlers when the error was not an HTTP response error (e.g. a `WebException` with a null `Response`). Status-code extraction is now centralized in a guarded `Get-FDAHttpStatusCode` helper.
+  - `Test-FDAObservability` reported a false **Warning** for the Schema check when *no* tables were missing (`$missing.Count` on `$null`), and could throw on the spool check with a single spooled file — both array-coerced.
+  - `New-FDAReportMarkdown` rejected an empty result set (`[Parameter(Mandatory)] [object[]]`), so writing a Markdown report over an empty window failed — now `[AllowEmptyCollection()]`.
+
+### Added
+
+- Comprehensive Pester suite: **113 tests, ~89% command coverage** (up from ~27%), covering every token provider, the cache/dispatch layer, interactive resolvers, the KQL/ingest primitives, the flush buffer/spool, all read cmdlets, config/levels, `Invoke-FDAQuery`, reports, the health check, and governance sync. Includes a regression test that connects and resolves a token end-to-end through an installed provider (the exact path that failed).
+
 ## [1.2.0] - 2026-06-22
 
 ### Added
