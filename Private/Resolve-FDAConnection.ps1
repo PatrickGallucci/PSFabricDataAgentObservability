@@ -87,6 +87,106 @@ function Resolve-FDAWorkspace {
     return $workspaces[$sel - 1].id
 }
 
+function Resolve-FDAWorkspaceByName {
+    <#
+    .SYNOPSIS
+        Find a Fabric workspace by display name, optionally creating it when
+        absent. Returns the workspace id. Non-interactive — used by the
+        config-driven setup flow.
+    .PARAMETER Name
+        Workspace display name to find or create.
+    .PARAMETER CreateIfMissing
+        Create the workspace when no match is found instead of throwing. When
+        set, the workspace is also ensured to be on a Fabric capacity (a created
+        or capacity-less workspace cannot host an Eventhouse).
+    .PARAMETER CapacityName
+        Fabric capacity (display name) to host a created / capacity-less
+        workspace. Optional — auto-picks when exactly one capacity is visible.
+    .PARAMETER CapacityId
+        Fabric capacity id; overrides -CapacityName.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $Name,
+        [switch] $CreateIfMissing,
+        [string] $CapacityName,
+        [string] $CapacityId
+    )
+
+    $match = @(Get-FDAWorkspaceList) | Where-Object { $_.displayName -eq $Name } | Select-Object -First 1
+    if ($match) {
+        Write-Verbose "Found workspace '$Name' ($($match.id))."
+        # Ensure an existing workspace has a capacity so it can host the Eventhouse.
+        if ($CreateIfMissing) {
+            $hasCapacity = ($match.PSObject.Properties.Name -contains 'capacityId') -and $match.capacityId
+            if (-not $hasCapacity) {
+                $cap = Resolve-FDACapacity -CapacityName $CapacityName -CapacityId $CapacityId
+                Write-Host "Workspace '$Name' has no capacity; assigning '$($cap.displayName)'..." -ForegroundColor Yellow
+                Set-FDAWorkspaceCapacity -WorkspaceId $match.id -CapacityId $cap.id
+            }
+        }
+        return $match.id
+    }
+    if (-not $CreateIfMissing) {
+        throw "Workspace '$Name' not found and -CreateIfMissing was not set."
+    }
+    # A new workspace must be created on a capacity to host an Eventhouse.
+    $cap = Resolve-FDACapacity -CapacityName $CapacityName -CapacityId $CapacityId
+    Write-Host "Workspace '$Name' not found; creating it on capacity '$($cap.displayName)'..." -ForegroundColor Yellow
+    $ws = New-FDAWorkspace -DisplayName $Name -CapacityId $cap.id
+    if (-not $ws -or -not $ws.id) { throw "Workspace '$Name' was not created." }
+    Write-Host "Created workspace: $($ws.displayName) ($($ws.id))" -ForegroundColor Green
+    return $ws.id
+}
+
+function Resolve-FDAEventhouseByName {
+    <#
+    .SYNOPSIS
+        Find an Eventhouse by display name in a workspace, optionally creating it
+        when absent. Returns an object with the Eventhouse id and its resolved
+        endpoints. Non-interactive — used by the config-driven setup flow.
+    .PARAMETER WorkspaceId
+        Workspace to search in.
+    .PARAMETER Name
+        Eventhouse display name to find or create.
+    .PARAMETER CreateIfMissing
+        Create the Eventhouse when no match is found instead of throwing,
+        waiting for its endpoints to materialize.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $WorkspaceId,
+        [Parameter(Mandatory)] [string] $Name,
+        [switch] $CreateIfMissing
+    )
+
+    $match = @(Get-FDAEventhouseList -WorkspaceId $WorkspaceId) | Where-Object { $_.displayName -eq $Name } | Select-Object -First 1
+    if ($match) {
+        Write-Verbose "Found Eventhouse '$Name' ($($match.id))."
+        $endpoints = Get-FDAEventhouseEndpoint -WorkspaceId $WorkspaceId -EventhouseId $match.id
+        return [pscustomobject]@{ EventhouseId = $match.id; Endpoints = $endpoints }
+    }
+    if (-not $CreateIfMissing) {
+        throw "Eventhouse '$Name' not found in workspace $WorkspaceId and -CreateIfMissing was not set."
+    }
+    Write-Host "Eventhouse '$Name' not found; creating it..." -ForegroundColor Yellow
+    $eh = New-FDAEventhouse -WorkspaceId $WorkspaceId -DisplayName $Name
+    if (-not $eh -or -not $eh.id) { throw "Eventhouse '$Name' was not created." }
+
+    Write-Host 'Waiting for Eventhouse endpoints to become available...' -ForegroundColor DarkGray
+    $deadline = (Get-Date).AddMinutes(5)
+    do {
+        Start-Sleep -Seconds 5
+        $endpoints = Get-FDAEventhouseEndpoint -WorkspaceId $WorkspaceId -EventhouseId $eh.id
+        if ($endpoints.QueryServiceUri) { break }
+    } while ((Get-Date) -lt $deadline)
+    if (-not $endpoints.QueryServiceUri) {
+        throw 'Eventhouse created but endpoints did not materialize within 5 minutes.'
+    }
+    Write-Host "Created Eventhouse: $($endpoints.DisplayName) ($($eh.id))" -ForegroundColor Green
+    return [pscustomobject]@{ EventhouseId = $eh.id; Endpoints = $endpoints }
+}
+
 function Resolve-FDAEventhouse {
     <#
     .SYNOPSIS

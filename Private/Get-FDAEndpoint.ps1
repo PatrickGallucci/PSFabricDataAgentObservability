@@ -79,15 +79,93 @@ function Get-FDAEventhouseList {
     return Get-FDAFabricCollection -Url $url
 }
 
+function Get-FDACapacityList {
+    <#
+    .SYNOPSIS
+        List the Fabric capacities the caller can see (via Fabric REST).
+    #>
+    [CmdletBinding()]
+    param()
+    return Get-FDAFabricCollection -Url 'https://api.fabric.microsoft.com/v1/capacities'
+}
+
+function Resolve-FDACapacity {
+    <#
+    .SYNOPSIS
+        Resolve a Fabric capacity to assign to a created / capacity-less
+        workspace. An Eventhouse (Real-Time Intelligence) cannot be created in a
+        workspace with no Fabric capacity (Fabric returns FeatureNotAvailable).
+    .DESCRIPTION
+        Resolution order:
+          1. -CapacityId, if given (matched against the visible capacities).
+          2. -CapacityName, if given (matched on displayName).
+          3. The single Active capacity, when exactly one is visible.
+        Otherwise throws with the list of candidates so the caller can set
+        CapacityName in config.json (or pass -CapacityName / -CapacityId).
+    #>
+    [CmdletBinding()]
+    param(
+        [string] $CapacityId,
+        [string] $CapacityName
+    )
+
+    $all    = @(Get-FDACapacityList)
+    # Prefer Active capacities; fall back to the full list if state is absent.
+    $active = @($all | Where-Object { -not ($_.PSObject.Properties.Name -contains 'state') -or $_.state -eq 'Active' })
+
+    if ($CapacityId) {
+        $hit = $all | Where-Object { $_.id -eq $CapacityId } | Select-Object -First 1
+        if (-not $hit) { throw "Capacity id '$CapacityId' was not found among the capacities you can access." }
+        return $hit
+    }
+    if ($CapacityName) {
+        $hit = $all | Where-Object { $_.displayName -eq $CapacityName } | Select-Object -First 1
+        if (-not $hit) {
+            $names = ($all | ForEach-Object displayName) -join ', '
+            throw "Capacity '$CapacityName' was not found. Available: $names"
+        }
+        return $hit
+    }
+    if ($active.Count -eq 1) { return $active[0] }
+    if ($active.Count -eq 0) {
+        throw 'No Fabric capacity is available to host the workspace. An Eventhouse requires a workspace on a Fabric (F-SKU) or Trial capacity. Assign a capacity in the Fabric portal, then retry.'
+    }
+    $names = ($active | ForEach-Object displayName) -join ', '
+    throw "Multiple Fabric capacities are available ($names). Set 'CapacityName' in config.json or pass -CapacityName to choose one."
+}
+
+function Set-FDAWorkspaceCapacity {
+    <#
+    .SYNOPSIS
+        Assign a Fabric workspace to a capacity (POST .../assignToCapacity).
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)] [string] $WorkspaceId,
+        [Parameter(Mandatory)] [string] $CapacityId
+    )
+    $url = 'https://api.fabric.microsoft.com/v1/workspaces/{0}/assignToCapacity' -f $WorkspaceId
+    $token = Get-FDAAccessToken -Scope 'https://api.fabric.microsoft.com/.default'
+    $headers = @{
+        Authorization  = "Bearer $token"
+        'Content-Type' = 'application/json; charset=utf-8'
+    }
+    $body = @{ capacityId = $CapacityId } | ConvertTo-Json
+    if ($PSCmdlet.ShouldProcess($WorkspaceId, "Assign to capacity $CapacityId")) {
+        Invoke-RestMethod -Method Post -Uri $url -Headers $headers -Body $body -ErrorAction Stop | Out-Null
+    }
+}
+
 function New-FDAWorkspace {
     <#
     .SYNOPSIS
-        Create a new Fabric workspace.
+        Create a new Fabric workspace, optionally on a specific capacity.
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)] [string] $DisplayName,
-        [string] $Description = 'Created by PSFabricDataAgentObservability.'
+        [string] $Description = 'Created by PSFabricDataAgentObservability.',
+        [string] $CapacityId
     )
     $url = 'https://api.fabric.microsoft.com/v1/workspaces'
     $token = Get-FDAAccessToken -Scope 'https://api.fabric.microsoft.com/.default'
@@ -95,7 +173,10 @@ function New-FDAWorkspace {
         Authorization  = "Bearer $token"
         'Content-Type' = 'application/json; charset=utf-8'
     }
-    $body = @{ displayName = $DisplayName; description = $Description } | ConvertTo-Json
+    $payload = @{ displayName = $DisplayName; description = $Description }
+    # Create the workspace directly on a capacity so it can host an Eventhouse.
+    if ($CapacityId) { $payload.capacityId = $CapacityId }
+    $body = $payload | ConvertTo-Json
     if ($PSCmdlet.ShouldProcess($DisplayName, 'Create Fabric workspace')) {
         return Invoke-RestMethod -Method Post -Uri $url -Headers $headers -Body $body -ErrorAction Stop
     }

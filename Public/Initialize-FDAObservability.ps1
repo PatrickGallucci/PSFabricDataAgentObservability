@@ -7,60 +7,82 @@ function Initialize-FDAObservability {
         Idempotent. Safe to re-run after schema changes — uses
         .create-merge / .create-or-alter throughout.
 
-        Three modes:
-          1. Use an existing Eventhouse:   -EventhouseId <guid>
-          2. Provision the Eventhouse:     -CreateEventhouse -EventhouseName <name>
-          3. Interactive: omit -WorkspaceId and/or -EventhouseId and you are
-             prompted to select an existing Fabric workspace / Eventhouse or
-             create a new one.
+        Resource resolution (Workspace / Eventhouse / Database) is by NAME and
+        creates anything missing. The names default to config.json
+        (WorkspaceName / EventhouseName / DatabaseName) so the common case is a
+        bare `Initialize-FDAObservability -TenantId $TenantId`. Explicit ids and
+        names override the config defaults; the interactive picker is still used
+        only when a name cannot be determined.
+
+    .PARAMETER TenantId
+        Tenant to operate in. Typically the value returned by
+        Connect-FDAObservability. Optional — when omitted the already-connected
+        session's tenant is used.
 
     .PARAMETER WorkspaceId
-        Target Fabric workspace id. Optional — when omitted you are prompted to
-        select an existing workspace or create a new one.
+        Target Fabric workspace id. Optional — overrides -WorkspaceName lookup.
+
+    .PARAMETER WorkspaceName
+        Fabric workspace display name to find or create. Defaults to config.json
+        (WorkspaceName).
 
     .PARAMETER EventhouseId
-        Existing Eventhouse item id. Omit when -CreateEventhouse is set. When
-        omitted without -CreateEventhouse you are prompted to select an
-        existing Eventhouse or create a new one.
-
-    .PARAMETER CreateEventhouse
-        Provision a new Eventhouse in -WorkspaceId.
+        Existing Eventhouse item id. Optional — overrides -EventhouseName lookup.
 
     .PARAMETER EventhouseName
-        Display name for the new Eventhouse. Required with -CreateEventhouse.
+        Eventhouse display name to find or create. Defaults to config.json
+        (EventhouseName).
+
+    .PARAMETER CapacityName
+        Fabric capacity (display name) used when a workspace must be created or
+        assigned a capacity (an Eventhouse requires one). Defaults to config.json
+        (CapacityName); when unset, a single visible capacity is auto-selected.
+
+    .PARAMETER CapacityId
+        Fabric capacity id; overrides -CapacityName.
+
+    .PARAMETER CreateEventhouse
+        Force creation of a new Eventhouse named -EventhouseName (kept for
+        backward compatibility; the name-based path already creates when absent).
 
     .PARAMETER DatabaseName
-        KQL database name. Defaults to 'FDAObs'.
+        KQL database name to find or create. Defaults to config.json
+        (DatabaseName).
 
     .PARAMETER SchemaPath
         Folder containing the numbered .kql files. Defaults to the module's
         Schema/ folder.
 
     .EXAMPLE
+        # Config-driven: create/find 'FUAM PUB' / 'FDAObservability' / 'FDAObs'.
+        $TenantId = Connect-FDAObservability -AuthMethod UserDelegated
+        Initialize-FDAObservability -TenantId $TenantId
+
+    .EXAMPLE
         Initialize-FDAObservability -WorkspaceId 'w...' -EventhouseId 'e...'
 
     .EXAMPLE
-        Initialize-FDAObservability -WorkspaceId 'w...' -CreateEventhouse `
-            -EventhouseName 'FDAObservabilityProd'
-
-    .EXAMPLE
-        # Interactive: pick (or create) the workspace and Eventhouse, then provision.
-        Initialize-FDAObservability
+        Initialize-FDAObservability -WorkspaceName 'My WS' -EventhouseName 'FDAObservabilityProd'
     #>
-    [CmdletBinding(SupportsShouldProcess, DefaultParameterSetName = 'Existing')]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
+        [string] $TenantId,
+
         [string] $WorkspaceId,
 
-        [Parameter(ParameterSetName = 'Existing')]
+        [string] $WorkspaceName,
+
         [string] $EventhouseId,
 
-        [Parameter(Mandatory, ParameterSetName = 'Create')]
-        [switch] $CreateEventhouse,
-
-        [Parameter(Mandatory, ParameterSetName = 'Create')]
         [string] $EventhouseName,
 
-        [string] $DatabaseName = 'FDAObs',
+        [string] $CapacityName,
+
+        [string] $CapacityId,
+
+        [switch] $CreateEventhouse,
+
+        [string] $DatabaseName,
 
         [string] $SchemaPath = (Join-Path $PSScriptRoot '..' 'Schema')
     )
@@ -69,13 +91,28 @@ function Initialize-FDAObservability {
         throw 'Not connected. Call Connect-FDAObservability first (you can connect against any Eventhouse in the workspace, then Initialize will resolve / create the target).'
     }
 
-    # Resolve the workspace — select or create interactively when not supplied.
+    if ($TenantId) { $script:FDAState.TenantId = $TenantId }
+
+    # Fill name defaults from config.json for anything not supplied.
+    $cfg = Get-FDAModuleConfig
+    if (-not $WorkspaceName)  { $WorkspaceName  = $cfg.WorkspaceName }
+    if (-not $EventhouseName) { $EventhouseName = $cfg.EventhouseName }
+    if (-not $DatabaseName)   { $DatabaseName   = $cfg.DatabaseName }
+    if (-not $CapacityName)   { $CapacityName   = $cfg.CapacityName }
+
+    # Resolve the workspace: explicit id > name (create if missing) > interactive.
     if (-not $WorkspaceId) {
-        $WorkspaceId = Resolve-FDAWorkspace
+        if ($WorkspaceName) {
+            $WorkspaceId = Resolve-FDAWorkspaceByName -Name $WorkspaceName -CreateIfMissing `
+                -CapacityName $CapacityName -CapacityId $CapacityId
+        } else {
+            $WorkspaceId = Resolve-FDAWorkspace
+        }
     }
 
-    # Resolve or create the Eventhouse.
-    if ($PSCmdlet.ParameterSetName -eq 'Create') {
+    # Resolve the Eventhouse: -CreateEventhouse > explicit id > name (create if
+    # missing) > interactive.
+    if ($CreateEventhouse) {
         Write-Verbose "Creating Eventhouse '$EventhouseName' in workspace $WorkspaceId..."
         $eh = New-FDAEventhouse -WorkspaceId $WorkspaceId -DisplayName $EventhouseName
         $EventhouseId = $eh.id
@@ -90,12 +127,15 @@ function Initialize-FDAObservability {
             throw 'Eventhouse created but endpoints did not materialize within 5 minutes.'
         }
         Write-Verbose "Eventhouse created: $($endpoints.DisplayName) ($EventhouseId)"
-    } else {
-        # Select an existing Eventhouse or create one interactively when not supplied.
-        if (-not $EventhouseId) {
-            $EventhouseId = Resolve-FDAEventhouse -WorkspaceId $WorkspaceId
-        }
+    } elseif ($EventhouseId) {
         $endpoints = Get-FDAEventhouseEndpoint -WorkspaceId $WorkspaceId -EventhouseId $EventhouseId
+    } elseif ($EventhouseName) {
+        $resolved    = Resolve-FDAEventhouseByName -WorkspaceId $WorkspaceId -Name $EventhouseName -CreateIfMissing
+        $EventhouseId = $resolved.EventhouseId
+        $endpoints    = $resolved.Endpoints
+    } else {
+        $EventhouseId = Resolve-FDAEventhouse -WorkspaceId $WorkspaceId
+        $endpoints    = Get-FDAEventhouseEndpoint -WorkspaceId $WorkspaceId -EventhouseId $EventhouseId
     }
 
     # Switch the module to point at the resolved Eventhouse.

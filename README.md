@@ -22,6 +22,20 @@ It captures the full interaction trail — **question → reasoning → groundin
 - Permission to enable Workspace Monitoring on the semantic model (for executed-DAX correlation)
 - For governance sync: an app registration with `ActivityFeed.Read` on `manage.office.com`
 - A Service Principal, Managed Identity, or interactive user that can reach FDA + Eventhouse
+- For **UserDelegated** (browser) sign-in: a public client app present in your tenant — see the one-time admin prerequisite below
+
+## Prerequisite — one-time, tenant admin (recommended)
+
+Browser sign-in (`-AuthMethod UserDelegated`) uses a public client app that must exist in your tenant. The least-friction option is to have a **tenant admin** instantiate the Azure CLI well-known app once:
+
+```powershell
+Connect-MgGraph -Scopes "Application.ReadWrite.All"
+New-MgServicePrincipal -AppId "04b07795-8ddb-461a-bbee-02f9e1bf7b46"   # Azure CLI
+```
+
+Once that service principal exists, `Connect-FDAObservability` works with `config.json` `ClientId` left `null`. **Why this is easiest:** the Azure CLI app already carries broad pre-consented delegated permissions (Fabric/Power BI, ARM, Kusto), so there's nothing else to configure.
+
+No admin access? Register your own public-client app (Authentication → **Allow public client flows = Yes**, redirect URI `http://localhost`), grant it the delegated permissions above, and put its app id in `config.json` `ClientId` (or pass `-ClientId`). The symptom of a missing/unprovisioned app is **`AADSTS700016`** at sign-in.
 
 ## Install
 
@@ -38,21 +52,20 @@ Import-Module ./PSFabricDataAgentObservability.psd1
 ## Quick start
 
 ```powershell
-# 1. Connect — pick the auth method that fits your runner.
-#    Omit TenantId/WorkspaceId/EventhouseId to sign in interactively: you're
-#    prompted for the tenant (ID or domain), then pick (or create) the
-#    workspace and Eventhouse from a menu.
-Connect-FDAObservability -AuthMethod UserDelegated
-
-#    …or pass them explicitly for an unattended/scripted connect:
-Connect-FDAObservability -AuthMethod UserDelegated `
-    -TenantId     '<tenant-guid>' `
-    -WorkspaceId  '<workspace-guid>' `
-    -EventhouseId '<eventhouse-guid>'
+# 1. Sign in. UserDelegated uses the browser (auth-code + PKCE): a window opens,
+#    you sign in, the tenant is discovered from the token and returned — no
+#    tenant prompt, no code to paste. (See the admin prerequisite above.)
+$TenantId = Connect-FDAObservability -AuthMethod UserDelegated
 
 # 2. One-time provisioning (tables, mappings, policies, functions, seed levels).
-#    Omit the ids to select or create the workspace/Eventhouse interactively.
-Initialize-FDAObservability
+#    The Workspace / Eventhouse / Database default to config.json
+#    (WorkspaceName 'FUAM PUB', EventhouseName 'FDAObservability',
+#    DatabaseName 'FDAObs') and are CREATED if they don't already exist.
+Initialize-FDAObservability -TenantId $TenantId
+
+#    …or override any of the names (still create-if-missing):
+Initialize-FDAObservability -TenantId $TenantId `
+    -WorkspaceName 'My WS' -EventhouseName 'FDAObservabilityProd'
 
 #    …or target an existing workspace/Eventhouse explicitly:
 Initialize-FDAObservability -WorkspaceId '<workspace-guid>' -EventhouseId '<eventhouse-guid>'

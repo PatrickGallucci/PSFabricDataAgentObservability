@@ -13,6 +13,7 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 $script:FDAState = [pscustomobject]@{
     Connected           = $false
+    ModuleRoot          = $PSScriptRoot    # module install dir; used to locate config.json / Schema
     AuthMethod          = $null            # 'ServicePrincipal' | 'ManagedIdentity' | 'UserDelegated'
     TokenProviders      = @{}              # scope -> [scriptblock] returning a fresh AccessToken
     TokenCache          = @{}              # scope -> @{ Token = '...'; ExpiresOn = [datetime] }

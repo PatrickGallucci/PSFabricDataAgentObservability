@@ -48,7 +48,7 @@ Scopes used:
 Provider implementations:
 - **ServicePrincipal:** v2.0 token endpoint with client secret OR JWT client assertion (cert-based)
 - **ManagedIdentity:** IMDS for IaaS; `IDENTITY_ENDPOINT`/`IDENTITY_HEADER` for App Service / Functions / Arc
-- **UserDelegated:** Device-code flow against the well-known Power BI public client (override `-ClientId` for your own AAD app)
+- **UserDelegated:** Browser auth-code + PKCE flow (loopback redirect) against the public client from `config.json` (Azure CLI well-known app by default; override via `ClientId`). Targets the `organizations` authority when no tenant is supplied and discovers the tenant from the returned token, so `Connect-FDAObservability` returns the `TenantId`.
 
 ## Data flow — interaction capture
 

@@ -23,42 +23,64 @@ Captures the full interaction trail — **question → reasoning → grounding �
 - Permission to enable Workspace Monitoring on the semantic model (for executed-DAX correlation)
 - For governance sync: an app registration with `ActivityFeed.Read` on `manage.office.com`
 - Either a Service Principal, a Managed Identity, or an interactive user that can hit FDA + Eventhouse
+- For **UserDelegated** (browser) sign-in: a public client app present in your tenant — see the prerequisite below
+
+## Prerequisite — one-time, tenant admin (recommended)
+
+Browser sign-in (`-AuthMethod UserDelegated`) uses a public client app that must exist in your tenant. The least-friction option is to have a **tenant admin** instantiate the Azure CLI well-known app once:
+
+```powershell
+Connect-MgGraph -Scopes "Application.ReadWrite.All"
+New-MgServicePrincipal -AppId "04b07795-8ddb-461a-bbee-02f9e1bf7b46"   # Azure CLI
+```
+
+Once that service principal exists, `Connect-FDAObservability` works with `config.json` `ClientId` left `null`.
+
+!!! tip "Why this is easiest"
+    The Azure CLI app already carries broad pre-consented delegated permissions (Fabric/Power BI, ARM, Kusto), so there's nothing else to configure.
+
+!!! note "No admin access?"
+    Register your own public-client app (Authentication → **Allow public client flows = Yes**, redirect URI `http://localhost`), grant it the delegated permissions above, and put its app id in `config.json` `ClientId` (or pass `-ClientId`). The symptom of a missing/unprovisioned app is **`AADSTS700016`** at sign-in.
 
 ## Quick start
 
 ```powershell
 Import-Module ./PSFabricDataAgentObservability.psd1
 
-# 1. Connect — pick the auth method that fits your runner.
-#    Omit TenantId/WorkspaceId/EventhouseId to sign in interactively: you're
-#    prompted for the tenant (ID or domain), then pick (or create) the
-#    workspace and Eventhouse from a menu.
-Connect-FDAObservability -AuthMethod UserDelegated
+# 1. Sign in. UserDelegated uses the browser (auth-code + PKCE): a window opens,
+#    you sign in, the tenant is discovered from the token and returned. No
+#    tenant prompt, no code to paste.
+$TenantId = Connect-FDAObservability -AuthMethod UserDelegated
 
-#    …or pass them explicitly for an unattended/scripted connect:
-Connect-FDAObservability -AuthMethod UserDelegated `
-    -TenantId        '<tenant-guid>' `
-    -WorkspaceId     '<workspace-guid>' `
-    -EventhouseId    '<eventhouse-guid>'
+# 2. One-time provisioning. The Workspace / Eventhouse / Database default to
+#    config.json (WorkspaceName 'FUAM PUB', EventhouseName 'FDAObservability',
+#    DatabaseName 'FDAObs') and are CREATED if they don't already exist.
+Initialize-FDAObservability -TenantId $TenantId
 
-# 2. One-time provisioning (or run examples/01-setup-eventhouse.ps1).
-#    Omit the ids to select or create the workspace/Eventhouse interactively.
-Initialize-FDAObservability
+#    …or override any of the names (still create-if-missing):
+Initialize-FDAObservability -TenantId $TenantId `
+    -WorkspaceName 'My WS' -EventhouseName 'FDAObservabilityProd' -DatabaseName 'FDAObs'
 
-#    …or target an existing workspace/Eventhouse explicitly:
-Initialize-FDAObservability -WorkspaceId '<workspace-guid>' `
-                            -EventhouseId '<eventhouse-guid>'
+#    …or target existing ids explicitly:
+Initialize-FDAObservability -WorkspaceId '<workspace-guid>' -EventhouseId '<eventhouse-guid>'
 
 # 3. Replace direct FDA calls with the proxy.
 $answer = Invoke-FDAQuery -AgentEndpoint 'https://<fda-endpoint>' `
                           -Question 'Revenue by region last quarter?'
 ```
 
-To provision a freshly-named Eventhouse in one call:
+The defaults live in **config.json** in the module root and are read at runtime:
 
-```powershell
-Initialize-FDAObservability -WorkspaceId '<ws>' -CreateEventhouse -EventhouseName 'FDAObservability'
+```json
+{
+    "WorkspaceName": "FUAM PUB",
+    "EventhouseName": "FDAObservability",
+    "DatabaseName": "FDAObs",
+    "ClientId": null
+}
 ```
+
+`ClientId` is the public client used for browser sign-in; `null` means the Azure CLI well-known app. If that app isn't provisioned in your tenant (you'll see `AADSTS700016`), set it to an app you've registered there with **Allow public client flows = Yes** and an `http://localhost` redirect URI.
 
 ## Auth — caller picks
 
@@ -72,12 +94,11 @@ Connect-FDAObservability -AuthMethod ServicePrincipal `
 Connect-FDAObservability -AuthMethod ManagedIdentity `
     -WorkspaceId $ws -EventhouseId $eh
 
-# User-delegated (device code flow)
-Connect-FDAObservability -AuthMethod UserDelegated `
-    -TenantId $tid -WorkspaceId $ws -EventhouseId $eh
+# User-delegated (browser auth-code + PKCE) — returns the discovered TenantId
+$TenantId = Connect-FDAObservability -AuthMethod UserDelegated
 ```
 
-Tokens are cached and refreshed transparently. Cert-based SP auth is supported via `-Certificate`. For **UserDelegated**, the device-code flow requests `offline_access`, so a **single interactive sign-in covers every scope** (Fabric, Kusto, ARM, Power BI) — the cached refresh token is redeemed silently for each new resource instead of prompting again.
+Tokens are cached and refreshed transparently. Cert-based SP auth is supported via `-Certificate`. For **UserDelegated**, the browser auth-code + PKCE flow requests `offline_access`, so a **single interactive sign-in covers every scope** (Fabric, Kusto, ARM, Power BI) — the cached refresh token is redeemed silently for each new resource instead of prompting again. The tenant is read from the returned token, so you don't supply it up front.
 
 ## Logging levels — built-in + dynamic custom
 

@@ -10,9 +10,12 @@ function Connect-FDAObservability {
         Three auth methods supported. The caller picks which one their
         environment uses; the module behaves the same after connect.
 
-        For UserDelegated, the device-code sign-in requests offline_access and
-        the resulting refresh token is reused across scopes, so a single
-        interactive sign-in covers Fabric, Kusto, ARM and Power BI.
+        For UserDelegated, sign-in uses the browser-based authorization-code +
+        PKCE flow (a loopback redirect, no code to paste) and requests
+        offline_access; the resulting refresh token is reused across scopes, so a
+        single interactive sign-in covers Fabric, Kusto, ARM and Power BI. The
+        tenant is discovered from the returned token, so Connect returns the
+        TenantId — assign it and pass to Initialize-FDAObservability.
 
     .PARAMETER AuthMethod
         ServicePrincipal | ManagedIdentity | UserDelegated
@@ -20,13 +23,15 @@ function Connect-FDAObservability {
     .PARAMETER TenantId
         Required for ServicePrincipal. Optional for ManagedIdentity (taken
         from IMDS metadata) and UserDelegated. When omitted for UserDelegated
-        you are prompted for a tenant ID (GUID) or verified domain
-        (e.g. contoso.onmicrosoft.com) to sign in to — the device-code flow
-        needs a concrete tenant, so it cannot be discovered after sign-in.
+        the browser flow signs in against the 'organizations' authority and the
+        tenant is discovered from the returned token (and returned to the
+        caller). Supply it to pin sign-in to a specific tenant.
 
     .PARAMETER ClientId
         Required for ServicePrincipal. For UserDelegated, defaults to the
-        well-known Power BI public client id.
+        public client id from config.json (the Azure CLI well-known app unless
+        overridden) — set "ClientId" there to use an app registered in your
+        tenant.
 
     .PARAMETER ClientSecret
         Required for ServicePrincipal when not using certificate auth.
@@ -61,8 +66,10 @@ function Connect-FDAObservability {
             -WorkspaceId 'w...' -EventhouseId 'e...'
 
     .EXAMPLE
-        # Fully interactive: sign in, pick (or create) tenant / workspace / Eventhouse.
-        Connect-FDAObservability -AuthMethod UserDelegated
+        # Browser sign-in; tenant discovered and returned. Then provision by
+        # name from config.json (creating Workspace/Eventhouse/Database if absent).
+        $TenantId = Connect-FDAObservability -AuthMethod UserDelegated
+        Initialize-FDAObservability -TenantId $TenantId
 
     .EXAMPLE
         Connect-FDAObservability -AuthMethod UserDelegated `
@@ -132,10 +139,11 @@ function Connect-FDAObservability {
             $script:FDAState.TokenProviders['*'] = { param($Scope) Get-FDAManagedIdentityToken -Scope $Scope }
         }
         'UserDelegated' {
-            # Default to the Power BI / Azure PowerShell well-known public client
-            # if no ClientId was supplied. Device-code flow on first use, then
-            # silent refresh-token reuse across scopes (see Get-FDAUserDelegatedToken).
-            if (-not $ClientId) { $ClientId = '1950a258-227b-4e31-a9cf-717495945fc8' }
+            # Default the public client id from config.json (Azure CLI well-known
+            # app unless overridden) when none was supplied. Browser auth-code +
+            # PKCE on first use, then silent refresh-token reuse across scopes
+            # (see Get-FDAUserDelegatedToken).
+            if (-not $ClientId) { $ClientId = (Get-FDAModuleConfig).ClientId }
             $script:FDAState.ClientId = $ClientId
             # New sign-in: drop any refresh token from a previous connection.
             $script:FDAState.RefreshToken = $null
@@ -146,56 +154,61 @@ function Connect-FDAObservability {
     $script:FDAState.Connected = $true
 
     # ---------------------------------------------------------------------
-    # Resolve tenant / workspace / Eventhouse. Anything not supplied as a
-    # parameter is selected interactively (this is where the device-code
-    # sign-in happens for UserDelegated).
+    # Sign in / resolve endpoints.
+    #
+    # For UserDelegated, perform the browser sign-in now so the tenant is
+    # discovered at connect time (not lazily on first log). The auth-code flow
+    # targets the 'organizations' authority when no tenant was supplied and
+    # reads the tenant from the returned token, so Connect can return it.
+    #
+    # Workspace / Eventhouse resolution is OPTIONAL here: when both ids are
+    # supplied we resolve endpoints (the runtime logging path); otherwise this
+    # is a pure auth bootstrap and Initialize-FDAObservability resolves (or
+    # creates) the target Workspace / Eventhouse / Database by name from config.
     # ---------------------------------------------------------------------
-
-    # Tenant: only UserDelegated needs an interactive prompt. SP uses the
-    # supplied -TenantId; ManagedIdentity takes it from IMDS. The device-code
-    # flow can't bootstrap without a concrete tenant, so ask for one up front.
-    if (-not $script:FDAState.TenantId -and $AuthMethod -eq 'UserDelegated') {
-        $script:FDAState.TenantId = Resolve-FDATenant
-        Write-Host "Signing in to tenant: $($script:FDAState.TenantId)" -ForegroundColor Green
+    if ($AuthMethod -eq 'UserDelegated') {
+        # Triggers the browser flow and populates $script:FDAState.TenantId.
+        Get-FDAAccessToken -Scope 'https://api.fabric.microsoft.com/.default' | Out-Null
+        if ($script:FDAState.TenantId) {
+            Write-Host "Signed in to tenant: $($script:FDAState.TenantId)" -ForegroundColor Green
+        }
     }
 
-    # Workspace.
-    if (-not $WorkspaceId) {
-        $WorkspaceId = Resolve-FDAWorkspace
+    $endpoints = $null
+    if ($WorkspaceId -and $EventhouseId) {
+        $script:FDAState.WorkspaceId  = $WorkspaceId
+        $script:FDAState.EventhouseId = $EventhouseId
+        $endpoints = Get-FDAEventhouseEndpoint -WorkspaceId $WorkspaceId -EventhouseId $EventhouseId
+        $script:FDAState.EventhouseClusterUri = $endpoints.QueryServiceUri
+        $script:FDAState.EventhouseIngestUri  = $endpoints.IngestionServiceUri
+
+        # Load config & log levels from the database (best-effort; empty on new install).
+        try { Get-FDAObservabilityConfig | Out-Null } catch { Write-Verbose "Config load skipped: $($_.Exception.Message)" }
+        try { Get-FDALogLevel | Out-Null }            catch { Write-Verbose "Log levels load skipped: $($_.Exception.Message)" }
+
+        # Drain any spooled events from the previous session.
+        try { Restore-FDASpool } catch { Write-Verbose "Spool restore skipped: $($_.Exception.Message)" }
+
+        # Start the background flush timer.
+        Start-FDAFlushTimer
     }
-    $script:FDAState.WorkspaceId = $WorkspaceId
 
-    # Eventhouse.
-    if (-not $EventhouseId) {
-        $EventhouseId = Resolve-FDAEventhouse -WorkspaceId $WorkspaceId
-    }
-    $script:FDAState.EventhouseId = $EventhouseId
-
-    # Resolve Eventhouse endpoints.
-    $endpoints = Get-FDAEventhouseEndpoint -WorkspaceId $WorkspaceId -EventhouseId $EventhouseId
-    $script:FDAState.EventhouseClusterUri = $endpoints.QueryServiceUri
-    $script:FDAState.EventhouseIngestUri = $endpoints.IngestionServiceUri
-
-    # Load config & log levels from the database (best-effort; empty on new install).
-    try { Get-FDAObservabilityConfig | Out-Null } catch { Write-Verbose "Config load skipped: $($_.Exception.Message)" }
-    try { Get-FDALogLevel | Out-Null }            catch { Write-Verbose "Log levels load skipped: $($_.Exception.Message)" }
-
-    # Drain any spooled events from the previous session.
-    try { Restore-FDASpool } catch { Write-Verbose "Spool restore skipped: $($_.Exception.Message)" }
-
-    # Start the background flush timer.
-    Start-FDAFlushTimer
-
-    [pscustomobject]@{
-        Connected           = $true
-        AuthMethod          = $AuthMethod
-        WorkspaceId         = $WorkspaceId
-        EventhouseId        = $EventhouseId
-        EventhouseDisplay   = $endpoints.DisplayName
-        DatabaseName        = $DatabaseName
-        ClusterUri          = $endpoints.QueryServiceUri
-        IngestionUri        = $endpoints.IngestionServiceUri
-        SessionId           = $script:FDAState.SessionId
+    # Return the TenantId as the primary value so callers can write
+    #   $TenantId = Connect-FDAObservability
+    # while still exposing the full connection status as properties (so
+    #   $conn.Connected / $conn.ClusterUri  keep working).
+    $result = [string]$script:FDAState.TenantId
+    $result | Add-Member -PassThru -NotePropertyMembers @{
+        Connected         = $true
+        AuthMethod        = $AuthMethod
+        TenantId          = $script:FDAState.TenantId
+        WorkspaceId       = $script:FDAState.WorkspaceId
+        EventhouseId      = $script:FDAState.EventhouseId
+        EventhouseDisplay = if ($endpoints) { $endpoints.DisplayName } else { $null }
+        DatabaseName      = $DatabaseName
+        ClusterUri        = if ($endpoints) { $endpoints.QueryServiceUri } else { $null }
+        IngestionUri      = if ($endpoints) { $endpoints.IngestionServiceUri } else { $null }
+        SessionId         = $script:FDAState.SessionId
     }
 }
 

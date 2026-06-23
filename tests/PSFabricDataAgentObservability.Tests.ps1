@@ -284,43 +284,59 @@ Describe 'Managed Identity token provider' {
     }
 }
 
-Describe 'User-delegated device-code flow' {
-    It 'completes the device-code flow and stores the refresh token' {
-        Mock -ModuleName PSFabricDataAgentObservability Start-Sleep { }
-        Mock -ModuleName PSFabricDataAgentObservability Write-Host { }
+Describe 'User-delegated browser auth-code flow' {
+    BeforeAll {
+        # An id_token whose payload carries a `tid` claim, so tenant discovery
+        # has something to read. Only the payload segment must be valid base64url.
+        $script:fdaIdTokenPayload = [Convert]::ToBase64String(
+            [Text.Encoding]::UTF8.GetBytes('{"tid":"disc-tenant"}')
+        ).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+        $script:fdaIdToken = "hdr.$($script:fdaIdTokenPayload).sig"
+    }
+    It 'completes the auth-code flow, stores the refresh token, and discovers the tenant' {
+        Mock -ModuleName PSFabricDataAgentObservability Get-FDAInteractiveAuthCode {
+            [pscustomobject]@{ Code = 'AUTHCODE'; RedirectUri = 'http://localhost:12345'; CodeVerifier = 'VERIFIER' }
+        }
         Mock -ModuleName PSFabricDataAgentObservability Invoke-RestMethod {
-            if ($Uri -like '*devicecode*') {
-                [pscustomobject]@{ verification_uri = 'https://aka.ms/devicelogin'; user_code = 'ABC-123'; expires_in = 900; interval = 0; device_code = 'DC' }
-            } else {
-                [pscustomobject]@{ access_token = 'AT-DEVICE'; expires_in = 3600; refresh_token = 'RT-FIRST' }
-            }
+            [pscustomobject]@{ access_token = 'AT-BROWSER'; expires_in = 3600; refresh_token = 'RT-FIRST'; id_token = $script:fdaIdToken }
         }
         $r = InModuleScope PSFabricDataAgentObservability {
-            $script:FDAState.TenantId = 't'; $script:FDAState.RefreshToken = $null
+            $script:FDAState.TenantId = $null; $script:FDAState.RefreshToken = $null
             try {
                 $tok = Get-FDAUserDelegatedToken -ClientId 'cid' -Scope 'https://api.fabric.microsoft.com/.default'
-                [pscustomobject]@{ Token = $tok.Token; RT = $script:FDAState.RefreshToken }
+                [pscustomobject]@{ Token = $tok.Token; RT = $script:FDAState.RefreshToken; Tenant = $script:FDAState.TenantId }
             } finally { $script:FDAState.TenantId = $null; $script:FDAState.RefreshToken = $null }
         }
-        $r.Token | Should -Be 'AT-DEVICE'
-        $r.RT    | Should -Be 'RT-FIRST'
+        $r.Token  | Should -Be 'AT-BROWSER'
+        $r.RT     | Should -Be 'RT-FIRST'
+        $r.Tenant | Should -Be 'disc-tenant'
+        Should -Invoke -ModuleName PSFabricDataAgentObservability Invoke-RestMethod -ParameterFilter {
+            $Body.grant_type -eq 'authorization_code' -and $Body.code_verifier -eq 'VERIFIER' -and $Body.code -eq 'AUTHCODE'
+        }
     }
-    It 'throws a clear error when no tenant is set' {
-        { InModuleScope PSFabricDataAgentObservability {
-            $script:FDAState.TenantId = $null
-            Get-FDAUserDelegatedToken -ClientId 'cid' -Scope 's'
-        } } | Should -Throw -ExpectedMessage '*requires a tenant*'
+    It 'signs in against the organizations authority when no tenant is set (no error)' {
+        Mock -ModuleName PSFabricDataAgentObservability Get-FDAInteractiveAuthCode {
+            [pscustomobject]@{ Code = 'C'; RedirectUri = 'http://localhost:1'; CodeVerifier = 'V' }
+        }
+        Mock -ModuleName PSFabricDataAgentObservability Invoke-RestMethod {
+            [pscustomobject]@{ access_token = 'AT'; expires_in = 3600 }
+        }
+        InModuleScope PSFabricDataAgentObservability {
+            $script:FDAState.TenantId = $null; $script:FDAState.RefreshToken = $null
+            try { (Get-FDAUserDelegatedToken -ClientId 'cid' -Scope 's').Token | Should -Be 'AT' }
+            finally { $script:FDAState.TenantId = $null }
+        }
+        Should -Invoke -ModuleName PSFabricDataAgentObservability Invoke-RestMethod -ParameterFilter {
+            $Uri -like '*/organizations/*'
+        }
     }
-    It 'falls back to device code when the stored refresh token is rejected' {
-        Mock -ModuleName PSFabricDataAgentObservability Start-Sleep { }
-        Mock -ModuleName PSFabricDataAgentObservability Write-Host { }
+    It 'falls back to interactive sign-in when the stored refresh token is rejected' {
+        Mock -ModuleName PSFabricDataAgentObservability Get-FDAInteractiveAuthCode {
+            [pscustomobject]@{ Code = 'C'; RedirectUri = 'http://localhost:1'; CodeVerifier = 'V' }
+        }
         Mock -ModuleName PSFabricDataAgentObservability Invoke-RestMethod {
             if ($Body.grant_type -eq 'refresh_token') { throw 'invalid_grant' }
-            if ($Uri -like '*devicecode*') {
-                [pscustomobject]@{ verification_uri = 'u'; user_code = 'c'; expires_in = 900; interval = 0; device_code = 'DC' }
-            } else {
-                [pscustomobject]@{ access_token = 'AT-FALLBACK'; expires_in = 3600; refresh_token = 'RT-NEW' }
-            }
+            [pscustomobject]@{ access_token = 'AT-FALLBACK'; expires_in = 3600; refresh_token = 'RT-NEW' }
         }
         $tok = InModuleScope PSFabricDataAgentObservability {
             $script:FDAState.TenantId = 't'; $script:FDAState.RefreshToken = 'stale'
@@ -328,7 +344,7 @@ Describe 'User-delegated device-code flow' {
             finally { $script:FDAState.TenantId = $null; $script:FDAState.RefreshToken = $null }
         }
         $tok | Should -Be 'AT-FALLBACK'
-        Should -Invoke -ModuleName PSFabricDataAgentObservability Invoke-RestMethod -ParameterFilter { $Uri -like '*devicecode*' } -Times 1
+        Should -Invoke -ModuleName PSFabricDataAgentObservability Get-FDAInteractiveAuthCode -Times 1
     }
 }
 
@@ -429,6 +445,156 @@ Describe 'Interactive workspace / Eventhouse resolvers' {
         }
         $id = InModuleScope PSFabricDataAgentObservability { Resolve-FDAEventhouse -WorkspaceId 'w' }
         $id | Should -Be 'e-created'
+    }
+}
+
+Describe 'Get-FDAModuleConfig' {
+    It 'reads names and ClientId from a config file' {
+        $cfgPath = Join-Path $TestDrive 'config.json'
+        @{ WorkspaceName = 'WS-From-File'; EventhouseName = 'EH-From-File'; DatabaseName = 'DB-From-File'; ClientId = 'cid-file' } |
+            ConvertTo-Json | Set-Content -LiteralPath $cfgPath -Encoding utf8
+        $cfg = InModuleScope PSFabricDataAgentObservability -Parameters @{ P = $cfgPath } { param($P) Get-FDAModuleConfig -Path $P }
+        $cfg.WorkspaceName  | Should -Be 'WS-From-File'
+        $cfg.EventhouseName | Should -Be 'EH-From-File'
+        $cfg.DatabaseName   | Should -Be 'DB-From-File'
+        $cfg.ClientId       | Should -Be 'cid-file'
+    }
+    It 'falls back to built-in defaults when the file is missing' {
+        $cfg = InModuleScope PSFabricDataAgentObservability { Get-FDAModuleConfig -Path (Join-Path $TestDrive 'does-not-exist.json') }
+        $cfg.WorkspaceName  | Should -Be 'FUAM PUB'
+        $cfg.EventhouseName | Should -Be 'FDAObservability'
+        $cfg.DatabaseName   | Should -Be 'FDAObs'
+        $cfg.ClientId       | Should -Be '04b07795-8ddb-461a-bbee-02f9e1bf7b46'
+    }
+    It 'falls back per-key when a key is empty or null' {
+        $cfgPath = Join-Path $TestDrive 'partial.json'
+        @{ WorkspaceName = 'Only-WS'; ClientId = $null } | ConvertTo-Json | Set-Content -LiteralPath $cfgPath -Encoding utf8
+        $cfg = InModuleScope PSFabricDataAgentObservability -Parameters @{ P = $cfgPath } { param($P) Get-FDAModuleConfig -Path $P }
+        $cfg.WorkspaceName  | Should -Be 'Only-WS'
+        $cfg.EventhouseName | Should -Be 'FDAObservability'                       # default
+        $cfg.ClientId       | Should -Be '04b07795-8ddb-461a-bbee-02f9e1bf7b46'   # null -> default
+    }
+}
+
+Describe 'Name-based workspace / Eventhouse resolvers' {
+    It 'Resolve-FDAWorkspaceByName returns the id of a matching workspace' {
+        Mock -ModuleName PSFabricDataAgentObservability Write-Host { }
+        Mock -ModuleName PSFabricDataAgentObservability Get-FDAWorkspaceList {
+            @([pscustomobject]@{ displayName = 'Other'; id = 'w0' }, [pscustomobject]@{ displayName = 'FUAM PUB'; id = 'w-fuam' })
+        }
+        $id = InModuleScope PSFabricDataAgentObservability { Resolve-FDAWorkspaceByName -Name 'FUAM PUB' }
+        $id | Should -Be 'w-fuam'
+    }
+    It 'Resolve-FDAWorkspaceByName creates the workspace on a resolved capacity when missing' {
+        Mock -ModuleName PSFabricDataAgentObservability Write-Host { }
+        Mock -ModuleName PSFabricDataAgentObservability Get-FDAWorkspaceList { @() }
+        Mock -ModuleName PSFabricDataAgentObservability Resolve-FDACapacity { [pscustomobject]@{ id = 'cap-1'; displayName = 'Cap One' } }
+        Mock -ModuleName PSFabricDataAgentObservability New-FDAWorkspace { [pscustomobject]@{ displayName = 'FUAM PUB'; id = 'w-created' } }
+        $id = InModuleScope PSFabricDataAgentObservability { Resolve-FDAWorkspaceByName -Name 'FUAM PUB' -CreateIfMissing }
+        $id | Should -Be 'w-created'
+        Should -Invoke -ModuleName PSFabricDataAgentObservability New-FDAWorkspace -Times 1 -ParameterFilter { $CapacityId -eq 'cap-1' }
+    }
+    It 'Resolve-FDAWorkspaceByName assigns a capacity to an existing capacity-less workspace' {
+        Mock -ModuleName PSFabricDataAgentObservability Write-Host { }
+        Mock -ModuleName PSFabricDataAgentObservability Get-FDAWorkspaceList { @([pscustomobject]@{ displayName = 'FUAM PUB'; id = 'w-existing' }) }
+        Mock -ModuleName PSFabricDataAgentObservability Resolve-FDACapacity { [pscustomobject]@{ id = 'cap-2'; displayName = 'Cap Two' } }
+        Mock -ModuleName PSFabricDataAgentObservability Set-FDAWorkspaceCapacity { }
+        $id = InModuleScope PSFabricDataAgentObservability { Resolve-FDAWorkspaceByName -Name 'FUAM PUB' -CreateIfMissing }
+        $id | Should -Be 'w-existing'
+        Should -Invoke -ModuleName PSFabricDataAgentObservability Set-FDAWorkspaceCapacity -Times 1 -ParameterFilter { $WorkspaceId -eq 'w-existing' -and $CapacityId -eq 'cap-2' }
+    }
+    It 'Resolve-FDAWorkspaceByName leaves an existing capacity-backed workspace untouched' {
+        Mock -ModuleName PSFabricDataAgentObservability Write-Host { }
+        Mock -ModuleName PSFabricDataAgentObservability Get-FDAWorkspaceList { @([pscustomobject]@{ displayName = 'FUAM PUB'; id = 'w-cap'; capacityId = 'cap-existing' }) }
+        Mock -ModuleName PSFabricDataAgentObservability Set-FDAWorkspaceCapacity { }
+        $id = InModuleScope PSFabricDataAgentObservability { Resolve-FDAWorkspaceByName -Name 'FUAM PUB' -CreateIfMissing }
+        $id | Should -Be 'w-cap'
+        Should -Invoke -ModuleName PSFabricDataAgentObservability Set-FDAWorkspaceCapacity -Times 0
+    }
+    It 'Resolve-FDAWorkspaceByName throws when missing and -CreateIfMissing is not set' {
+        Mock -ModuleName PSFabricDataAgentObservability Write-Host { }
+        Mock -ModuleName PSFabricDataAgentObservability Get-FDAWorkspaceList { @() }
+        { InModuleScope PSFabricDataAgentObservability { Resolve-FDAWorkspaceByName -Name 'Nope' } } |
+            Should -Throw -ExpectedMessage '*not found*'
+    }
+    It 'Resolve-FDAEventhouseByName returns id + endpoints for a match' {
+        Mock -ModuleName PSFabricDataAgentObservability Write-Host { }
+        Mock -ModuleName PSFabricDataAgentObservability Get-FDAEventhouseList { @([pscustomobject]@{ displayName = 'FDAObservability'; id = 'e-match' }) }
+        Mock -ModuleName PSFabricDataAgentObservability Get-FDAEventhouseEndpoint {
+            [pscustomobject]@{ DisplayName = 'FDAObservability'; QueryServiceUri = 'https://q'; IngestionServiceUri = 'https://i' }
+        }
+        $r = InModuleScope PSFabricDataAgentObservability { Resolve-FDAEventhouseByName -WorkspaceId 'w' -Name 'FDAObservability' }
+        $r.EventhouseId        | Should -Be 'e-match'
+        $r.Endpoints.QueryServiceUri | Should -Be 'https://q'
+    }
+    It 'Resolve-FDAEventhouseByName creates and waits for endpoints when missing' {
+        Mock -ModuleName PSFabricDataAgentObservability Write-Host { }
+        Mock -ModuleName PSFabricDataAgentObservability Start-Sleep { }
+        Mock -ModuleName PSFabricDataAgentObservability Get-FDAEventhouseList { @() }
+        Mock -ModuleName PSFabricDataAgentObservability New-FDAEventhouse { [pscustomobject]@{ id = 'e-new' } }
+        Mock -ModuleName PSFabricDataAgentObservability Get-FDAEventhouseEndpoint {
+            [pscustomobject]@{ DisplayName = 'FDAObservability'; QueryServiceUri = 'https://q'; IngestionServiceUri = 'https://i' }
+        }
+        $r = InModuleScope PSFabricDataAgentObservability { Resolve-FDAEventhouseByName -WorkspaceId 'w' -Name 'FDAObservability' -CreateIfMissing }
+        $r.EventhouseId | Should -Be 'e-new'
+        Should -Invoke -ModuleName PSFabricDataAgentObservability New-FDAEventhouse -Times 1
+    }
+}
+
+Describe 'Resolve-FDACapacity' {
+    It 'auto-selects the single active capacity' {
+        Mock -ModuleName PSFabricDataAgentObservability Get-FDACapacityList {
+            @([pscustomobject]@{ id = 'c1'; displayName = 'Only'; state = 'Active' })
+        }
+        $c = InModuleScope PSFabricDataAgentObservability { Resolve-FDACapacity }
+        $c.id | Should -Be 'c1'
+    }
+    It 'matches by name when several are available' {
+        Mock -ModuleName PSFabricDataAgentObservability Get-FDACapacityList {
+            @([pscustomobject]@{ id = 'c1'; displayName = 'A'; state = 'Active' }, [pscustomobject]@{ id = 'c2'; displayName = 'B'; state = 'Active' })
+        }
+        $c = InModuleScope PSFabricDataAgentObservability { Resolve-FDACapacity -CapacityName 'B' }
+        $c.id | Should -Be 'c2'
+    }
+    It 'throws listing options when ambiguous and no name given' {
+        Mock -ModuleName PSFabricDataAgentObservability Get-FDACapacityList {
+            @([pscustomobject]@{ id = 'c1'; displayName = 'A'; state = 'Active' }, [pscustomobject]@{ id = 'c2'; displayName = 'B'; state = 'Active' })
+        }
+        { InModuleScope PSFabricDataAgentObservability { Resolve-FDACapacity } } |
+            Should -Throw -ExpectedMessage '*Multiple Fabric capacities*'
+    }
+    It 'throws a clear error when no capacity is available' {
+        Mock -ModuleName PSFabricDataAgentObservability Get-FDACapacityList { @() }
+        { InModuleScope PSFabricDataAgentObservability { Resolve-FDACapacity } } |
+            Should -Throw -ExpectedMessage '*No Fabric capacity*'
+    }
+}
+
+Describe 'Initialize-FDAObservability name-based provisioning' {
+    AfterEach { InModuleScope PSFabricDataAgentObservability { $script:FDAState.Connected = $false; $script:FDAState.TenantId = $null } }
+    It 'resolves workspace + Eventhouse by name (from config) and sets the tenant' {
+        Mock -ModuleName PSFabricDataAgentObservability Resolve-FDAWorkspaceByName { 'w-byname' }
+        Mock -ModuleName PSFabricDataAgentObservability Resolve-FDAEventhouseByName {
+            [pscustomobject]@{ EventhouseId = 'e-byname'; Endpoints = [pscustomobject]@{ DisplayName = 'EH'; QueryServiceUri = 'https://q'; IngestionServiceUri = 'https://i' } }
+        }
+        Mock -ModuleName PSFabricDataAgentObservability Get-FDAAccessToken { 'tok' }
+        Mock -ModuleName PSFabricDataAgentObservability Invoke-RestMethod {
+            if ($Method -eq 'Get') { return [pscustomobject]@{ value = @() } }
+            return [pscustomobject]@{ id = 'db' }
+        }
+        Mock -ModuleName PSFabricDataAgentObservability Invoke-KustoManagementCommand { }
+        Mock -ModuleName PSFabricDataAgentObservability Invoke-EventhouseIngest { }
+        Mock -ModuleName PSFabricDataAgentObservability Start-Sleep { }
+        $res = InModuleScope PSFabricDataAgentObservability {
+            $script:FDAState.Connected = $true
+            Initialize-FDAObservability -TenantId 'tenant-xyz' -Confirm:$false
+        }
+        $res.Initialized  | Should -BeTrue
+        $res.WorkspaceId  | Should -Be 'w-byname'
+        $res.EventhouseId | Should -Be 'e-byname'
+        (InModuleScope PSFabricDataAgentObservability { $script:FDAState.TenantId }) | Should -Be 'tenant-xyz'
+        Should -Invoke -ModuleName PSFabricDataAgentObservability Resolve-FDAWorkspaceByName -Times 1
+        Should -Invoke -ModuleName PSFabricDataAgentObservability Resolve-FDAEventhouseByName -Times 1
     }
 }
 

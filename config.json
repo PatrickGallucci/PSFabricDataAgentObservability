@@ -1,0 +1,7 @@
+{
+    "WorkspaceName": "FUAM PUB",
+    "EventhouseName": "FDAObservability",
+    "DatabaseName": "FDAObs",
+    "CapacityName": null,
+    "ClientId": null
+}

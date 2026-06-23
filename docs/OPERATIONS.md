@@ -2,8 +2,16 @@
 
 ## Deployment checklist
 
-1. **Provision the Eventhouse** — either point at an existing one, pass `-CreateEventhouse -EventhouseName <name>` to `Initialize-FDAObservability`, or omit `-WorkspaceId`/`-EventhouseId` entirely to select or create the workspace and Eventhouse interactively.
-2. **Run `Initialize-FDAObservability`** — creates tables, ingestion mappings, update policies, retention policies, and seed levels. Idempotent.
+0. **(One-time, tenant admin) Enable browser sign-in** — `UserDelegated` auth uses a public client app that must exist in the tenant. The least-friction option is to have an admin instantiate the Azure CLI well-known app once, after which `config.json` `ClientId` can stay `null`:
+
+    ```powershell
+    Connect-MgGraph -Scopes "Application.ReadWrite.All"
+    New-MgServicePrincipal -AppId "04b07795-8ddb-461a-bbee-02f9e1bf7b46"   # Azure CLI
+    ```
+
+    The Azure CLI app carries broad pre-consented delegated permissions (Fabric/Power BI, ARM, Kusto), so nothing else is required. Without admin help, register your own public-client app (Allow public client flows = Yes, `http://localhost` redirect) and set its id in `config.json` `ClientId`. A missing/unprovisioned app surfaces as `AADSTS700016`. Not needed for ServicePrincipal or ManagedIdentity runners.
+1. **Sign in and provision** — `$TenantId = Connect-FDAObservability -AuthMethod UserDelegated` (browser), then `Initialize-FDAObservability -TenantId $TenantId`. The Workspace / Eventhouse / Database default to `config.json` (`WorkspaceName`, `EventhouseName`, `DatabaseName`) and are created if missing. Override with `-WorkspaceName`/`-EventhouseName`/`-DatabaseName`, or target existing ids with `-WorkspaceId`/`-EventhouseId`.
+2. **`Initialize-FDAObservability`** also creates tables, ingestion mappings, update policies, retention policies, and seed levels. Idempotent.
 3. **Wire the proxy** — replace every direct call to the FDA published endpoint with `Invoke-FDAQuery`. App teams should not call FDA directly.
 4. **Enable Workspace Monitoring** on the underlying semantic model (Power BI workspace settings). Direct the export to the same Eventhouse, or to an Eventhouse you can query from KQL. Then point downstream telemetry into the `FDAExecutionsRaw` table via a scheduled `.set-or-append` from the Workspace Monitoring source table.
 5. **Configure governance sync** — schedule `Sync-FDAGovernanceLog` (see `examples/05-scheduled-governance-sync.ps1`). Run hourly to stay within the M365 audit feed's 7-day retention window.

@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-06-22
+
+### Changed
+
+- **UserDelegated now uses the browser-based authorization-code + PKCE flow** instead of device code. `Connect-FDAObservability -AuthMethod UserDelegated` opens the default browser, captures the redirect on an ephemeral `http://localhost:<port>` listener (no code to paste), and exchanges the code with a PKCE verifier. It signs in against the tenant-less `organizations` authority when no `-TenantId` is supplied, **discovers the tenant from the returned token**, and **returns the `TenantId`** — enabling the workflow `$TenantId = Connect-FDAObservability; Initialize-FDAObservability -TenantId $TenantId`. The `Connect-FDAObservability` return value is the tenant id string decorated with the usual status properties (`.Connected`, `.ClusterUri`, …).
+- **Connect no longer resolves Workspace/Eventhouse unless both ids are passed.** A bare UserDelegated connect is now a pure auth bootstrap; resource resolution moves to `Initialize-FDAObservability`.
+- The default public client id for browser sign-in is the Azure CLI well-known app (was the Power BI app), overridable via `config.json` `ClientId`.
+
+### Added
+
+- **Config-driven setup.** A `config.json` in the module root supplies the bootstrap defaults `WorkspaceName` (`FUAM PUB`), `EventhouseName` (`FDAObservability`), `DatabaseName` (`FDAObs`), and `ClientId` (null → Azure CLI). Read at runtime via the new private `Get-FDAModuleConfig`, with built-in fallbacks when the file or a key is absent.
+- **`Initialize-FDAObservability` resolves Workspace/Eventhouse/Database by name and creates anything missing.** New `-TenantId`, `-WorkspaceName`, and `-EventhouseName` parameters (names default from `config.json`); `-DatabaseName` now also defaults from config. New private helpers `Resolve-FDAWorkspaceByName` and `Resolve-FDAEventhouseByName` (`-CreateIfMissing`). Explicit `-WorkspaceId`/`-EventhouseId`/`-CreateEventhouse` still work.
+- **Fabric capacity handling for created workspaces.** An Eventhouse cannot be created in a workspace without a Fabric capacity (Fabric returns `FeatureNotAvailable`). A workspace that is created — or matched but found capacity-less — is now placed on a capacity: `-CapacityName`/`-CapacityId` (default `config.json` `CapacityName`), auto-selecting the single visible capacity or erroring with the list when ambiguous. New private helpers `Get-FDACapacityList`, `Resolve-FDACapacity`, and `Set-FDAWorkspaceCapacity`; `New-FDAWorkspace` gained `-CapacityId`. The admin prerequisite (instantiating the Azure CLI public client) is now documented in the README/Operations runbook and `examples/01-setup-eventhouse.ps1`.
+- Tests for the browser auth-code flow (mocked listener), tenant discovery from the id_token, `Get-FDAModuleConfig`, the name-based resolvers, and the config-driven `Initialize` path.
+
+### Fixed
+
+- **`examples/01-setup-eventhouse.ps1` dropped `-ClientId` for UserDelegated** (it was only forwarded for ServicePrincipal), so the well-known-app override never took effect and sign-in always used the default client. The script was rewritten around the new `Connect` → `Initialize -TenantId` flow and forwards overrides correctly.
+
 ## [1.2.1] - 2026-06-22
 
 ### Fixed
